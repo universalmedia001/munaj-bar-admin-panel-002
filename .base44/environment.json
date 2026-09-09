@@ -11,7 +11,7 @@
     },
     {
       "name": "SUPABASE_SECRET_KEY",
-      "description": "Supabase service_role secret key — find it in your Supabase project Dashboard > Settings > API > service_role key",
+      "description": "Supabase service_role / secret key (sb_secret_... or legacy service_role JWT) — from Supabase Dashboard > Settings > API > Secret keys. Required for privileged worker/user deletion (/api/admin/delete-worker, delete-shift, delete-record) and fixes the error 'Server configuration error: Supabase server secret key is not configured on the server.'",
       "requiredAtBoot": false,
       "generatedForDevelopment": false
     },
