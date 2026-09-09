@@ -1,0 +1,101 @@
+@import "tailwindcss";
+
+:root {
+  --worker-primary: #B7FF00;
+  --worker-primary-rgb: 183, 255, 0;
+  --worker-primary-hover: #9ee600;
+  --brand-primary: #B7FF00;
+  --brand-primary-rgb: 183, 255, 0;
+  --brand-primary-hover: #9ee600;
+}
+
+@layer base {
+  body {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    background-color: #050505;
+    color: #FFFFFF;
+    overflow-x: hidden;
+  }
+}
+
+/* Custom sleek dark scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0d0d0d;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #27272a;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3f3f46;
+}
+
+/* Receipt & Staff Report Print Styling */
+@media print {
+  @page receipt { size: 80mm auto; margin: 0; }
+
+  body * {
+    visibility: hidden !important;
+  }
+  html:has(#printable-receipt),
+  html:has(#printable-receipt) body {
+    width: 80mm !important;
+    min-width: 80mm !important;
+    max-width: 80mm !important;
+    height: auto !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    position: static !important;
+    transform: none !important;
+    display: block !important;
+    box-sizing: border-box !important;
+  }
+
+  #printable-receipt,
+  #printable-receipt * {
+    visibility: visible !important;
+  }
+  #printable-receipt {
+    position: static !important;
+    width: 80mm !important;
+    min-width: 80mm !important;
+    max-width: 80mm !important;
+    height: auto !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    transform: none !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    box-sizing: border-box !important;
+    background: white !important;
+    color: black !important;
+  }
+
+  #printable-staff-report, #printable-staff-report *,
+  #printable-shift-report, #printable-shift-report * {
+    visibility: visible;
+  }
+  #printable-staff-report,
+  #printable-shift-report {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 12mm;
+    background: white !important;
+    color: black !important;
+    font-size: 11px;
+    line-height: 1.4;
+  }
+}

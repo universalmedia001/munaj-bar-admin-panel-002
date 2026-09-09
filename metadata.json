@@ -1,0 +1,6 @@
+{
+  "name": "MUNAJ BAR — Admin Panel",
+  "description": "Administrative control center for MUNAJ BAR POS system with realtime sales, inventory, shifts, receipts, and worker management.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
