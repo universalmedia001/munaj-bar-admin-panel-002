@@ -239,7 +239,7 @@ export const ActivityView: React.FC<ActivityViewProps> = ({
                 setSelectedLogIds((prev) => prev.filter((id) => !ids.has(id)));
               }
             }}
-            className="rounded border-zinc-700 text-[#22C55E] focus:ring-[#22C55E] bg-zinc-900 cursor-pointer"
+            className="accent-[#22C55E] cursor-pointer"
           />
           <span>Select All</span>
         </label>
@@ -273,7 +273,7 @@ export const ActivityView: React.FC<ActivityViewProps> = ({
                   type="checkbox"
                   checked={selectedLogIds.includes(log.id)}
                   onChange={() => setSelectedLogIds((prev) => prev.includes(log.id) ? prev.filter((id) => id !== log.id) : [...prev, log.id])}
-                  className="mt-2 rounded border-zinc-700 text-[#22C55E] focus:ring-[#22C55E] bg-zinc-900 cursor-pointer"
+                  className="mt-2 accent-[#22C55E] cursor-pointer"
                   aria-label={`Select activity log ${log.id}`}
                 />
                 <div className="w-8 h-8 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center shrink-0 mt-0.5 text-zinc-400">
