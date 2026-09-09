@@ -1,0 +1,49 @@
+{
+  "previewPort": 3000,
+  "healthPath": "/api/health",
+  "startCommand": "docker compose -f docker-compose.base44.yml up -d",
+  "secrets": [
+    {
+      "name": "GEMINI_API_KEY",
+      "description": "Google AI Studio Gemini API key — get it from https://aistudio.google.com/apikey",
+      "requiredAtBoot": false,
+      "generatedForDevelopment": false
+    },
+    {
+      "name": "SUPABASE_SECRET_KEY",
+      "description": "Supabase service_role / secret key (sb_secret_... or legacy service_role JWT) — from Supabase Dashboard > Settings > API > Secret keys. Required for privileged worker/user deletion (/api/admin/delete-worker, delete-shift, delete-record) and fixes the error 'Server configuration error: Supabase server secret key is not configured on the server.'",
+      "requiredAtBoot": false,
+      "generatedForDevelopment": false
+    },
+    {
+      "name": "SUPABASE_URL",
+      "description": "Supabase project URL (e.g. https://xxxx.supabase.co) — from Supabase Dashboard > Settings > API",
+      "requiredAtBoot": false,
+      "generatedForDevelopment": false
+    },
+    {
+      "name": "VITE_SUPABASE_ANON_KEY",
+      "description": "Supabase anon/publishable key — from Supabase Dashboard > Settings > API > anon/publishable key",
+      "requiredAtBoot": false,
+      "generatedForDevelopment": false
+    },
+    {
+      "name": "VITE_SUPABASE_URL",
+      "description": "Supabase project URL for the frontend (same as SUPABASE_URL) — from Supabase Dashboard > Settings > API",
+      "requiredAtBoot": false,
+      "generatedForDevelopment": false
+    },
+    {
+      "name": "QZ_CERTIFICATE",
+      "description": "QZ Tray signing certificate (PEM string) — generated via QZ Tray tools, used for signed production print requests",
+      "requiredAtBoot": false,
+      "generatedForDevelopment": false
+    },
+    {
+      "name": "QZ_PRIVATE_KEY",
+      "description": "QZ Tray signing private key (PEM string) — generated via QZ Tray tools, server-side only, never expose to frontend",
+      "requiredAtBoot": false,
+      "generatedForDevelopment": false
+    }
+  ]
+}
