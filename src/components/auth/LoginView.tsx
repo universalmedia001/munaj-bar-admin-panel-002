@@ -107,7 +107,7 @@ export const LoginView: React.FC = () => {
     setResending(true);
     setResendStatus(null);
     try {
-      const emailRedirectTo = typeof window !== 'undefined' ? window.location.origin : undefined;
+      const emailRedirectTo = typeof window !== 'undefined' ? `${window.location.origin}/email-verified` : undefined;
       const { error } = await supabase.auth.resend({
         type: 'signup',
         email: verificationSentEmail,

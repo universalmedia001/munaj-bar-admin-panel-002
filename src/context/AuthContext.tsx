@@ -631,7 +631,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const cleanName = fullName.trim();
       console.log(`[MUNAJ Auth] Registering new admin account: ${cleanEmail}`);
 
-      const emailRedirectTo = typeof window !== 'undefined' ? window.location.origin : undefined;
+      const emailRedirectTo = typeof window !== 'undefined' ? `${window.location.origin}/email-verified` : undefined;
 
       const { data, error } = await supabase.auth.signUp({
         email: cleanEmail,

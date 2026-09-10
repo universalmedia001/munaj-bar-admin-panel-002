@@ -32,6 +32,7 @@ import { ReportsView } from './components/reports/ReportsView';
 import { SettingsView } from './components/settings/SettingsView';
 import { DatabaseView } from './components/database/DatabaseView';
 import { LoginView } from './components/auth/LoginView';
+import { EmailVerifiedView } from './components/auth/EmailVerifiedView';
 import { seedSampleBarData } from './utils/seedData';
 import { Sparkles, RefreshCw, AlertTriangle } from 'lucide-react';
 
@@ -49,6 +50,21 @@ function AdminApp() {
     }
   });
   const [realtimeConnected, setRealtimeConnected] = useState(true);
+  const [currentPath, setCurrentPath] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return window.location.pathname;
+    }
+    return '/';
+  });
+
+  // Track browser navigation and popstate events
+  useEffect(() => {
+    const handleLocationChange = () => {
+      setCurrentPath(window.location.pathname);
+    };
+    window.addEventListener('popstate', handleLocationChange);
+    return () => window.removeEventListener('popstate', handleLocationChange);
+  }, []);
 
   // Toggle sidebar collapse state and persist to localStorage
   const handleToggleSidebarCollapse = useCallback(() => {
@@ -350,6 +366,20 @@ function AdminApp() {
   const activeShiftsCount = useMemo(() => {
     return shifts.filter((s) => s.status === 'active').length;
   }, [shifts]);
+
+  // 0. Email Verification Success Landing Page (/email-verified)
+  if (currentPath === '/email-verified' || currentPath === '/email-verified/') {
+    return (
+      <EmailVerifiedView
+        onNavigateToLogin={() => {
+          if (typeof window !== 'undefined') {
+            window.history.pushState({}, '', '/');
+          }
+          setCurrentPath('/');
+        }}
+      />
+    );
+  }
 
   // 1. Initial Loading State (prevents flash of login screen while Supabase restores session or loads profile)
   if (authLoading || profileLoading || (user && !profile)) {
