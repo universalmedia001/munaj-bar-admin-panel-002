@@ -6,6 +6,7 @@ import { createServer as createViteServer } from "vite";
 import { handleAdminDeleteWorker } from "./server/adminDeleteWorker";
 import { handleAdminDeleteShift } from "./server/adminDeleteShift";
 import { handleAdminDeleteRecord } from "./server/adminDeleteRecord";
+import { handleAdminEnsureProfile } from "./server/adminEnsureProfile";
 import { handleQzPrintApi } from "./server/qzPrintApi";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -48,6 +49,15 @@ async function startServer() {
   app.use(async (req, res, next) => {
     if (req.url && req.url.startsWith("/api/admin/delete-record")) {
       const handled = await handleAdminDeleteRecord(req, res);
+      if (handled) return;
+    }
+    next();
+  });
+
+  // 2.3 Admin ensure profile endpoint (for verified admin profile synchronization)
+  app.use(async (req, res, next) => {
+    if (req.url && req.url.startsWith("/api/admin/ensure-profile")) {
+      const handled = await handleAdminEnsureProfile(req, res);
       if (handled) return;
     }
     next();

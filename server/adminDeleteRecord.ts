@@ -610,7 +610,13 @@ export async function handleAdminDeleteRecord(req: IncomingMessage, res: ServerR
       // ==========================================
       case 'staff_report': {
         try {
-          await db.from('staff_reports' as any).delete().eq('id', id);
+          const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+          if (isUuid) {
+            const { error: delErr } = await db.from('staff_reports' as any).delete().eq('id', id);
+            if (delErr) {
+              console.warn('[adminDeleteRecord] staff_reports delete error:', delErr.message);
+            }
+          }
         } catch (e) {
           console.warn('[adminDeleteRecord] staff_reports delete notice:', e);
         }

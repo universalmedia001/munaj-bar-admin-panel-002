@@ -618,7 +618,7 @@ export const StaffReportPreviewModal: React.FC<StaffReportPreviewModalProps> = (
       </div>
 
       {/* HIDDEN PRINT-ONLY CONTAINER */}
-      <div id="printable-staff-report" className="hidden">
+      <div id="printable-staff-report" className="hidden print:block">
         <div style={{ fontFamily: 'Helvetica, Arial, sans-serif', color: '#000', width: '100%' }}>
           {/* Header */}
           <div style={{ borderBottom: '2px solid #000', paddingBottom: '8px', marginBottom: '14px' }}>

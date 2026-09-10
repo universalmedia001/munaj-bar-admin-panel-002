@@ -351,8 +351,8 @@ function AdminApp() {
     return shifts.filter((s) => s.status === 'active').length;
   }, [shifts]);
 
-  // 1. Initial Loading State (prevents flash of login screen while Supabase restores session)
-  if (authLoading || profileLoading || (user && profileError && !profile)) {
+  // 1. Initial Loading State (prevents flash of login screen while Supabase restores session or loads profile)
+  if (authLoading || profileLoading || (user && !profile)) {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-[#050505] text-white">
         <div className="flex flex-col items-center gap-4">
@@ -378,8 +378,9 @@ function AdminApp() {
     return <LoginView />;
   }
 
-  // 3. User authenticated but profile missing or marked deleted
-  if (!profile || isWorkerDeleted(profile)) {
+  // 3. User authenticated but profile explicitly marked deleted or deactivated
+  if (profile && (isWorkerDeleted(profile) || profile.is_active === false)) {
+    const isDeactivated = profile.is_active === false && !isWorkerDeleted(profile);
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-[#050505] text-white px-4 selection:bg-[#22C55E]/30">
         <div className="max-w-md w-full bg-[#111111] border border-red-900/60 rounded-3xl p-8 text-center space-y-5 shadow-2xl backdrop-blur-xl">
@@ -387,9 +388,13 @@ function AdminApp() {
             <AlertTriangle className="w-7 h-7" />
           </div>
           <div>
-            <h2 className="text-lg font-black text-white">Account Inactive or Deleted</h2>
+            <h2 className="text-lg font-black text-white">
+              {isDeactivated ? 'Account Deactivated' : 'Account Inactive or Deleted'}
+            </h2>
             <p className="text-xs text-zinc-400 mt-2 leading-relaxed">
-              Your staff account is no longer active in MUNAJ Bar. If you believe this was in error, please contact an administrator.
+              {isDeactivated
+                ? 'Your administrator account has been deactivated. Please contact an administrator if you believe this was a mistake.'
+                : 'Your staff account is no longer active in MUNAJ Bar. If you believe this was in error, please contact an administrator.'}
             </p>
           </div>
           <div className="pt-2 flex flex-col gap-2.5">

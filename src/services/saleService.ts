@@ -2,6 +2,7 @@ import { getSupabase } from '../lib/supabase';
 import { productService } from './productService';
 import { isAuthorizedWorkerRole } from './authService';
 import { adminService } from './adminService';
+import { submitStaffReportFromPOS } from './staffReportService';
 import { BestSellingProductItem, CartItem, CompletedSaleResult, PaymentMethod, Sale, SaleItem, SaleWithItems } from '../types';
 
 /**
@@ -415,6 +416,11 @@ export const saleService = {
    * Submits a cashier's generated sales report to the Admin Panel as an official notification/activity
    */
   async submitReportToAdmin(params: {
+    workerId?: string;
+    workerRole?: string;
+    period?: string;
+    startDate?: string;
+    endDate?: string;
     workerName: string;
     periodLabel: string;
     totalSales: number;
@@ -473,6 +479,29 @@ export const saleService = {
       });
     } catch (logErr) {
       console.warn('Activity log notice:', logErr);
+    }
+
+    // 3. Persist to staff_reports database table so it appears in Staff Submitted Reports
+    try {
+      await submitStaffReportFromPOS({
+        worker_id: params.workerId || user?.id || '',
+        worker_name: params.workerName,
+        worker_role: params.workerRole || 'Cashier',
+        period: (params.period as any) || 'today',
+        period_label: params.periodLabel,
+        start_date: params.startDate || new Date().toISOString(),
+        end_date: params.endDate || new Date().toISOString(),
+        sales_total: params.totalSales,
+        transactions_count: params.totalTransactions,
+        items_count: params.totalItems,
+        cash_sales: params.paymentBreakdown.cash,
+        pos_sales: params.paymentBreakdown.pos,
+        transfer_sales: params.paymentBreakdown.transfer,
+        average_sale: params.totalTransactions > 0 ? params.totalSales / params.totalTransactions : 0,
+        notes: `Submitted ${params.periodLabel} sales report.`,
+      });
+    } catch (reportErr) {
+      console.warn('Notice creating staff report entry:', reportErr);
     }
   },
 

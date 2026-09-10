@@ -81,21 +81,29 @@
     color: black !important;
   }
 
+  #printable-submitted-report, #printable-submitted-report *,
+  #printable-cashier-sales-report, #printable-cashier-sales-report *,
   #printable-staff-report, #printable-staff-report *,
   #printable-shift-report, #printable-shift-report * {
-    visibility: visible;
+    visibility: visible !important;
   }
   #printable-staff-report,
+  #printable-submitted-report {
+    display: block !important;
+  }
+  #printable-submitted-report,
+  #printable-cashier-sales-report,
+  #printable-staff-report,
   #printable-shift-report {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
-    margin: 0;
-    padding: 12mm;
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 12mm !important;
     background: white !important;
     color: black !important;
-    font-size: 11px;
-    line-height: 1.4;
+    font-size: 11px !important;
+    line-height: 1.4 !important;
   }
 }

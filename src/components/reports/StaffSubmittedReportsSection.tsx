@@ -15,6 +15,7 @@ import {
   ShieldCheck,
   RefreshCw,
   Trash2,
+  Plus,
 } from 'lucide-react';
 import type {
   StaffSubmittedReport,
@@ -28,6 +29,7 @@ import { verifySubmittedReportAgainstDatabase, markReportAsViewed } from '../../
 import { generateAndDownloadSubmittedReportPDF } from '../../utils/submittedReportPdfGenerator';
 import { deleteSubmittedReport } from '../../services/staffReportService';
 import { DeleteConfirmModal } from '../common/DeleteConfirmModal';
+import { CreateStaffReportModal } from './CreateStaffReportModal';
 
 interface StaffSubmittedReportsSectionProps {
   reports: StaffSubmittedReport[];
@@ -60,6 +62,7 @@ export const StaffSubmittedReportsSection: React.FC<StaffSubmittedReportsSection
   const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const [bulkDeleteError, setBulkDeleteError] = useState<string | null>(null);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
   const currency = settings?.currency || 'NGN';
 
@@ -140,13 +143,14 @@ export const StaffSubmittedReportsSection: React.FC<StaffSubmittedReportsSection
       setDeleteError(null);
       const result = await deleteSubmittedReport(reportToDelete.id);
       if (!result.success) {
-        setDeleteError('Failed to delete report. Please try again.');
+        setDeleteError(result.message || 'Failed to delete report. Please try again.');
         return;
       }
       onReportDeleted(reportToDelete.id);
+      setSelectedReportIds((prev) => prev.filter((id) => id !== reportToDelete.id));
       setReportToDelete(null);
-    } catch {
-      setDeleteError('Failed to delete report. Please try again.');
+    } catch (err: any) {
+      setDeleteError(err?.message || 'Failed to delete report. Please try again.');
     } finally {
       setIsDeletingReport(false);
     }
@@ -157,18 +161,29 @@ export const StaffSubmittedReportsSection: React.FC<StaffSubmittedReportsSection
     try {
       setIsBulkDeleting(true);
       setBulkDeleteError(null);
+      const failedIds: string[] = [];
+      let lastErrorMessage = '';
+
       for (const reportId of selectedReportIds) {
         const result = await deleteSubmittedReport(reportId);
         if (!result.success) {
-          setBulkDeleteError('Failed to delete selected items. Please try again.');
-          return;
+          failedIds.push(reportId);
+          lastErrorMessage = result.message;
+        } else {
+          onReportDeleted(reportId);
         }
       }
-      selectedReportIds.forEach((reportId) => onReportDeleted(reportId));
+
+      if (failedIds.length > 0) {
+        setSelectedReportIds(failedIds);
+        setBulkDeleteError(lastErrorMessage || `Failed to delete ${failedIds.length} report(s). Please try again.`);
+        return;
+      }
+
       setSelectedReportIds([]);
       setIsBulkDeleteModalOpen(false);
-    } catch {
-      setBulkDeleteError('Failed to delete selected items. Please try again.');
+    } catch (err: any) {
+      setBulkDeleteError(err?.message || 'Failed to delete selected items. Please try again.');
     } finally {
       setIsBulkDeleting(false);
     }
@@ -197,15 +212,25 @@ export const StaffSubmittedReportsSection: React.FC<StaffSubmittedReportsSection
           </div>
         </div>
 
-        {onRefresh && (
+        <div className="flex items-center gap-2 flex-wrap self-start sm:self-auto">
           <button
-            onClick={onRefresh}
-            className="px-3.5 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-800 text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer self-start sm:self-auto"
+            id="create-staff-report-btn"
+            onClick={() => setIsCreateModalOpen(true)}
+            className="px-3.5 py-2 rounded-xl bg-[#22C55E] hover:bg-emerald-400 text-black font-extrabold text-xs flex items-center gap-2 transition-all cursor-pointer shadow-md shadow-emerald-950/30 active:scale-95"
           >
-            <RefreshCw className="w-3.5 h-3.5 text-[#22C55E]" />
-            <span>Refresh Submissions</span>
+            <Plus className="w-3.5 h-3.5" />
+            <span>Create Report</span>
           </button>
-        )}
+          {onRefresh && (
+            <button
+              onClick={onRefresh}
+              className="px-3.5 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-800 text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer"
+            >
+              <RefreshCw className="w-3.5 h-3.5 text-[#22C55E]" />
+              <span>Refresh Submissions</span>
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -554,6 +579,19 @@ export const StaffSubmittedReportsSection: React.FC<StaffSubmittedReportsSection
         confirmVariant="danger"
         loading={isBulkDeleting}
         error={bulkDeleteError}
+      />
+
+      <CreateStaffReportModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        workers={workers}
+        sales={sales}
+        settings={settings}
+        onReportCreated={() => {
+          if (onRefresh) {
+            onRefresh();
+          }
+        }}
       />
     </div>
   );

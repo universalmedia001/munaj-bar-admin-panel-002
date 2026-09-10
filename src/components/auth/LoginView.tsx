@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Wine,
   Lock,
@@ -7,21 +7,54 @@ import {
   ArrowRight,
   ShieldCheck,
   AlertCircle,
-  Sparkles,
+  CheckCircle2,
+  RefreshCw,
   Info,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useWorkerBranding } from '../../context/BrandingContext';
+import { supabase } from '../../lib/supabase';
 
 export const LoginView: React.FC = () => {
   const { signIn, signUpAdmin, accountTerminationNotice, clearTerminationNotice } = useAuth();
   const { workerPosName } = useWorkerBranding();
+
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Email verification instruction screen state
+  const [verificationSentEmail, setVerificationSentEmail] = useState<string | null>(null);
+  const [resending, setResending] = useState(false);
+  const [resendStatus, setResendStatus] = useState<string | null>(null);
+  const [resendCooldown, setResendCooldown] = useState(0);
+
+  // Check URL for email verification errors (e.g. otp_expired)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash;
+      const search = window.location.search;
+      if (hash.includes('error=') || search.includes('error=')) {
+        const params = new URLSearchParams(hash.startsWith('#') ? hash.slice(1) : search);
+        const desc = params.get('error_description') || params.get('error') || 'Verification link expired or invalid.';
+        setErrorMsg(`Email Verification: ${desc.replace(/\+/g, ' ')}`);
+        // Clean URL params
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    }
+  }, []);
+
+  // Cooldown countdown timer for resending email
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = setTimeout(() => {
+      setResendCooldown((prev) => prev - 1);
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [resendCooldown]);
 
   const displayNotice = errorMsg || accountTerminationNotice;
 
@@ -34,6 +67,7 @@ export const LoginView: React.FC = () => {
 
     setLoading(true);
     setErrorMsg(null);
+    setResendStatus(null);
 
     try {
       if (isSignUp) {
@@ -42,14 +76,21 @@ export const LoginView: React.FC = () => {
           setLoading(false);
           return;
         }
-        const { error } = await signUpAdmin(email, password, fullName);
-        if (error) {
-          setErrorMsg(error);
+
+        const res = await signUpAdmin(email, password, fullName);
+        if (res.error) {
+          setErrorMsg(res.error);
+        } else if (res.needsEmailVerification) {
+          setVerificationSentEmail(email.trim());
+          setResendCooldown(60);
         }
       } else {
-        const { error } = await signIn(email, password);
-        if (error) {
-          setErrorMsg(error);
+        const res = await signIn(email, password);
+        if (res.error) {
+          setErrorMsg(res.error);
+          if (res.needsEmailVerification) {
+            setVerificationSentEmail(email.trim());
+          }
         }
       }
     } catch (err: unknown) {
@@ -60,10 +101,126 @@ export const LoginView: React.FC = () => {
     }
   };
 
+  const handleResendVerification = async () => {
+    if (!verificationSentEmail || resendCooldown > 0 || resending) return;
+
+    setResending(true);
+    setResendStatus(null);
+    try {
+      const emailRedirectTo = typeof window !== 'undefined' ? window.location.origin : undefined;
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: verificationSentEmail,
+        options: {
+          emailRedirectTo,
+        },
+      });
+
+      if (error) {
+        setResendStatus(`Failed to resend: ${error.message}`);
+      } else {
+        setResendStatus('A fresh confirmation link has been sent to your inbox.');
+        setResendCooldown(60);
+      }
+    } catch (err: any) {
+      setResendStatus(`Error: ${err?.message || 'Unable to resend email'}`);
+    } finally {
+      setResending(false);
+    }
+  };
+
   const handleDemoAdminLogin = () => {
     setEmail('admin@munajbar.com');
     setPassword('Admin123456!');
   };
+
+  // Step 6: Verification instruction screen
+  if (verificationSentEmail) {
+    return (
+      <div className="min-h-screen bg-[#050505] text-[#FFFFFF] flex flex-col justify-center items-center px-4 py-12 selection:bg-[#22C55E]/30">
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[500px] h-[500px] bg-emerald-600/10 rounded-full blur-[120px] pointer-events-none" />
+
+        <div className="w-full max-w-md relative z-10">
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-zinc-900 border border-zinc-800 shadow-xl shadow-emerald-950/30 mb-4">
+              <Wine className="w-7 h-7 text-[#22C55E]" />
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white font-sans">
+              {workerPosName}
+            </h1>
+            <p className="text-xs uppercase tracking-[0.25em] text-[#22C55E] font-bold mt-1">
+              Admin & Management Portal
+            </p>
+          </div>
+
+          <div className="bg-[#111111] rounded-3xl border border-zinc-800/90 p-6 sm:p-8 shadow-2xl backdrop-blur-xl text-center space-y-6">
+            <div className="w-16 h-16 rounded-3xl bg-emerald-950/60 border border-emerald-800/60 flex items-center justify-center mx-auto text-[#22C55E] shadow-xl shadow-emerald-950/40">
+              <Mail className="w-8 h-8" />
+            </div>
+
+            <div>
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-950/70 border border-emerald-800/80 text-[#22C55E] text-[11px] font-bold uppercase tracking-wider mb-2">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>Verification Link Sent</span>
+              </div>
+              <h2 className="text-xl font-black text-white">Check Your Email</h2>
+              <p className="text-xs text-zinc-400 mt-2 leading-relaxed">
+                We sent a confirmation link to:
+              </p>
+              <div className="mt-2 px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-800 font-mono text-xs text-emerald-400 break-all select-all">
+                {verificationSentEmail}
+              </div>
+              <p className="text-xs text-zinc-400 mt-3 leading-relaxed">
+                Please check your inbox (and spam folder) and click <strong className="text-white">Verify Email</strong> to activate your administrator account and enter MUNAJ BAR.
+              </p>
+            </div>
+
+            {resendStatus && (
+              <div
+                className={`p-3 rounded-xl border text-xs text-left ${
+                  resendStatus.includes('Failed') || resendStatus.includes('Error')
+                    ? 'bg-red-950/50 border-red-800/70 text-red-300'
+                    : 'bg-emerald-950/50 border-emerald-800/70 text-emerald-300'
+                }`}
+              >
+                {resendStatus}
+              </div>
+            )}
+
+            <div className="space-y-2.5 pt-2">
+              <button
+                type="button"
+                onClick={handleResendVerification}
+                disabled={resending || resendCooldown > 0}
+                className="w-full py-3 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700/80 text-white font-semibold text-xs transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${resending ? 'animate-spin' : ''}`} />
+                <span>
+                  {resendCooldown > 0
+                    ? `Resend available in ${resendCooldown}s`
+                    : resending
+                    ? 'Sending...'
+                    : 'Resend Verification Email'}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setVerificationSentEmail(null);
+                  setIsSignUp(false);
+                  setErrorMsg(null);
+                }}
+                className="w-full py-2.5 rounded-xl text-zinc-400 hover:text-white font-medium text-xs transition-colors"
+              >
+                ← Back to Sign In
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#050505] text-[#FFFFFF] flex flex-col justify-center items-center px-4 py-12 selection:bg-[#22C55E]/30">
@@ -184,7 +341,7 @@ export const LoginView: React.FC = () => {
             <button
               type="submit"
               disabled={loading}
-              className="w-full mt-2 flex items-center justify-center gap-2 py-3 rounded-xl bg-[#22C55E] hover:bg-[#1ea750] text-black font-bold text-xs uppercase tracking-wider transition-all shadow-lg shadow-emerald-950/40 disabled:opacity-50"
+              className="w-full mt-2 flex items-center justify-center gap-2 py-3 rounded-xl bg-[#22C55E] hover:bg-[#1ea750] text-black font-bold text-xs uppercase tracking-wider transition-all shadow-lg shadow-emerald-950/40 disabled:opacity-50 cursor-pointer"
             >
               {loading ? (
                 <span>Authenticating...</span>
@@ -204,6 +361,7 @@ export const LoginView: React.FC = () => {
               onClick={() => {
                 setIsSignUp(!isSignUp);
                 setErrorMsg(null);
+                setResendStatus(null);
               }}
               className="text-[#22C55E] hover:underline font-semibold"
             >

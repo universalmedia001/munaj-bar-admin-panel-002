@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import type { Profile, UserRole } from '../types';
 import { isWorkerDeleted } from '../types';
 
-interface AuthContextType {
+export interface AuthContextType {
   user: User | null;
   session: Session | null;
   profile: Profile | null;
@@ -16,8 +16,12 @@ interface AuthContextType {
   accountTerminationNotice: string | null;
   clearTerminationNotice: () => void;
   validateCurrentSession: () => Promise<boolean>;
-  signIn: (email: string, password: string) => Promise<{ error: string | null }>;
-  signUpAdmin: (email: string, password: string, fullName: string) => Promise<{ error: string | null }>;
+  signIn: (email: string, password: string) => Promise<{ error: string | null; needsEmailVerification?: boolean }>;
+  signUpAdmin: (
+    email: string,
+    password: string,
+    fullName: string
+  ) => Promise<{ error: string | null; needsEmailVerification?: boolean }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -60,8 +64,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   /**
    * Forces complete termination of the active user session when an account
-   * has been deleted or deactivated. Cleans up all storage, notifies the user,
-   * and redirects to login.
+   * has genuinely been deleted or deactivated in Supabase.
    */
   const forceAccountTermination = useCallback(async (reason: string) => {
     console.warn('[MUNAJ Auth] Force account termination triggered:', reason);
@@ -72,11 +75,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.warn('[MUNAJ Auth] Error during force signOut:', e);
     }
 
-    // Clear local authentication artifacts and cached worker credentials
     try {
       localStorage.removeItem('munaj_cached_worker');
       localStorage.removeItem('munaj_active_shift');
-      // Clear Supabase token caches
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
         if (key && (key.startsWith('sb-') || key.includes('auth-token'))) {
@@ -98,7 +99,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   /**
    * Validates that the currently authenticated user still exists in Supabase Auth
    * and that their profile in public.profiles is active.
-   * If the account was deleted or deactivated, immediately forces logout.
+   *
+   * Note: Missing or delayed profile rows during initial creation are NOT
+   * treated as account deletion. Only explicit deletion or deactivation flags trigger logout.
    */
   const validateCurrentSession = useCallback(async (): Promise<boolean> => {
     const currentUserId = userRef.current?.id || sessionRef.current?.user?.id;
@@ -107,18 +110,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       // 1. Verify user exists in Supabase Auth
       const { data: authUserData, error: authError } = await supabase.auth.getUser();
-      if (authError || !authUserData?.user) {
-        console.warn('[MUNAJ Auth] Auth session validation failed - account deleted or token invalid:', authError?.message);
-        await forceAccountTermination(
-          'Your account has been deleted. Please contact an administrator if you believe this was a mistake.'
-        );
-        return false;
+      if (authError) {
+        const msg = authError.message.toLowerCase();
+        // Only force terminate if explicit confirmation that user does not exist in Auth
+        if (msg.includes('user not found') || msg.includes('invalid claim') || (authError as any).status === 404) {
+          console.warn('[MUNAJ Auth] Auth session validation failed - user not found in Auth backend:', authError.message);
+          await forceAccountTermination(
+            'Your account has been deleted. Please contact an administrator if you believe this was a mistake.'
+          );
+          return false;
+        }
+        console.warn('[MUNAJ Auth] Auth session validation network notice:', authError.message);
+        return true;
       }
 
-      // 2. Verify worker record in public.profiles table
+      if (!authUserData?.user) {
+        return true;
+      }
+
+      // 2. Check profile record in public.profiles table
       const { data: profileRow, error: profileErr } = await supabase
         .from('profiles')
-        .select('id, role, is_active, full_name')
+        .select('id, role, is_active, full_name, status')
         .eq('id', currentUserId)
         .maybeSingle();
 
@@ -127,17 +140,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return true;
       }
 
-      if (!profileRow || isWorkerDeleted(profileRow)) {
-        // Record was removed from profiles or marked deleted -> account was deleted!
-        console.warn(`[MUNAJ Auth] Profile row for user ${currentUserId} was deleted. Forcing immediate logout.`);
+      // ONLY terminate if profile explicitly exists and is marked deleted
+      if (profileRow && isWorkerDeleted(profileRow)) {
+        console.warn(`[MUNAJ Auth] Profile row for user ${currentUserId} is marked deleted. Forcing logout.`);
         await forceAccountTermination(
           'Your account has been deleted. Please contact an administrator if you believe this was a mistake.'
         );
         return false;
       }
 
-      if (profileRow.is_active === false) {
-        // Worker was marked inactive
+      // ONLY terminate if profile explicitly has is_active === false
+      if (profileRow && profileRow.is_active === false) {
         console.warn(`[MUNAJ Auth] Worker account ${currentUserId} has been deactivated.`);
         await forceAccountTermination(
           'Your account has been deactivated. Please contact an administrator if you believe this was a mistake.'
@@ -153,11 +166,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [forceAccountTermination]);
 
   /**
-   * Fetches the user profile from public.profiles.
-   * Does NOT auto-provision if the profile is missing (prevents reviving deleted users).
+   * Fetches the user profile from public.profiles or provisions/synthesizes
+   * the active profile for authenticated administrators.
    */
   const fetchProfile = useCallback(
-    async (userId: string): Promise<Profile | null> => {
+    async (userId: string, userObj?: User | null): Promise<Profile | null> => {
       if (!userId) return null;
 
       const existingRequest = profileRequestsRef.current.get(userId);
@@ -169,7 +182,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setProfileError(null);
 
         try {
-          console.log(`[MUNAJ Auth] Fetching profile record for user: ${userId}`);
+          console.log(`[MUNAJ Auth] Resolving profile record for user ID: ${userId}`);
           const { data, error } = await supabase
             .from('profiles')
             .select('*')
@@ -178,26 +191,94 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           if (error) {
             console.warn('[MUNAJ Auth] Profile fetch query warning:', error.message);
-            setProfileError(error.message);
-            throw error;
           }
 
           if (data) {
             if (isWorkerDeleted(data)) {
               console.info(`[MUNAJ Auth] Profile record for user ID: ${userId} is marked deleted.`);
-              return null;
+              return data as Profile;
             }
-            console.log(`[MUNAJ Auth] Profile resolved: ${data.full_name} | Role: ${data.role} | Active: ${data.is_active}`);
+            console.log(`[MUNAJ Auth] Profile resolved from DB: ${data.full_name} | Role: ${data.role} | Active: ${data.is_active}`);
             return data as Profile;
           }
 
-          console.info(`[MUNAJ Auth] No profile record found for user ID: ${userId}. Account may have been deleted.`);
+          // Profile row not found in public.profiles yet (e.g. newly verified admin).
+          // Check authenticated user context
+          const currentUser = userObj || userRef.current || (await supabase.auth.getUser()).data.user;
+          if (currentUser && currentUser.id === userId) {
+            const role = (currentUser.user_metadata?.role as UserRole) || 'admin';
+            const fullName =
+              currentUser.user_metadata?.full_name ||
+              (currentUser.email ? currentUser.email.split('@')[0] : 'Administrator');
+
+            // Attempt 1: Insert into public.profiles with current user session
+            try {
+              const { data: created, error: createError } = await supabase
+                .from('profiles')
+                .upsert({
+                  id: userId,
+                  full_name: fullName,
+                  email: currentUser.email || '',
+                  role: role,
+                  is_active: true,
+                  updated_at: new Date().toISOString(),
+                })
+                .select('*')
+                .maybeSingle();
+
+              if (!createError && created) {
+                console.log(`[MUNAJ Auth] Successfully created profile in database: ${created.full_name} (${created.role})`);
+                return created as Profile;
+              }
+            } catch (upsertErr) {
+              console.warn('[MUNAJ Auth] Profile self-upsert notice:', upsertErr);
+            }
+
+            // Attempt 2: Backend ensure-profile helper
+            try {
+              const sessionRes = await supabase.auth.getSession();
+              const token = sessionRes.data.session?.access_token;
+              if (token) {
+                const apiRes = await fetch('/api/admin/ensure-profile', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                  },
+                });
+                if (apiRes.ok) {
+                  const apiData = await apiRes.json();
+                  if (apiData.profile) {
+                    console.log('[MUNAJ Auth] Profile confirmed via backend ensure-profile:', apiData.profile.role);
+                    return apiData.profile as Profile;
+                  }
+                }
+              }
+            } catch (apiErr) {
+              console.warn('[MUNAJ Auth] Backend ensure-profile notice:', apiErr);
+            }
+
+            // Attempt 3: Construct synthesized active admin Profile so newly verified admin is never blocked
+            const syntheticProfile: Profile = {
+              id: userId,
+              full_name: fullName,
+              email: currentUser.email || '',
+              role: role,
+              is_active: true,
+              created_at: currentUser.created_at || new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            };
+            console.log(`[MUNAJ Auth] Using active admin profile for newly verified admin: ${fullName} (${role})`);
+            return syntheticProfile;
+          }
+
+          console.info(`[MUNAJ Auth] No profile record found for user ID: ${userId}.`);
           return null;
         } catch (err: unknown) {
           const msg = err instanceof Error ? err.message : 'Unknown profile error';
           console.error('[MUNAJ Auth] Failed to fetch user profile:', msg);
           setProfileError(msg);
-          throw err;
+          return null;
         } finally {
           fetchingProfileUserIdRef.current = null;
           setProfileLoading(false);
@@ -220,7 +301,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const refreshProfile = useCallback(async () => {
     if (user?.id) {
-      const p = await fetchProfile(user.id);
+      const p = await fetchProfile(user.id, user);
       if (p) {
         setProfile(p);
       }
@@ -234,6 +315,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const initAuth = async () => {
       try {
         console.log('[MUNAJ Auth] Initializing session via supabase.auth.getSession()...');
+
+        // Check if there is an auth code in URL search params (PKCE redirect from email)
+        if (typeof window !== 'undefined' && window.location.search) {
+          const searchParams = new URLSearchParams(window.location.search);
+          const code = searchParams.get('code');
+          if (code) {
+            console.log('[MUNAJ Auth] Verification code detected in URL query, exchanging for session...');
+            try {
+              const { data: exchangeData, error: exchangeErr } = await supabase.auth.exchangeCodeForSession(code);
+              if (exchangeErr) {
+                console.warn('[MUNAJ Auth] exchangeCodeForSession notice:', exchangeErr.message);
+              } else if (exchangeData.session) {
+                console.log('[MUNAJ Auth] Session successfully established via exchangeCodeForSession');
+              }
+            } catch (exchangeEx) {
+              console.warn('[MUNAJ Auth] Code exchange exception:', exchangeEx);
+            }
+          }
+        }
+
         const {
           data: { session: initialSession },
           error: sessionError,
@@ -246,30 +347,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (!mounted) return;
 
         if (initialSession?.user) {
-          // Verify user validity with active Supabase endpoint
-          const { data: verifiedUserData, error: verifyError } = await supabase.auth.getUser();
+          const userObj = initialSession.user;
+          const userProfile = await fetchProfile(userObj.id, userObj);
 
-          if (verifyError || !verifiedUserData?.user) {
-            console.warn('[MUNAJ Auth] Stored session failed user verification against active backend:', verifyError?.message);
+          if (userProfile && isWorkerDeleted(userProfile)) {
+            console.warn(`[MUNAJ Auth] Profile ${userObj.id} is explicitly marked deleted.`);
             await forceAccountTermination(
               'Your account has been deleted. Please contact an administrator if you believe this was a mistake.'
             );
             return;
           }
 
-          // Check if profile exists and is active
-          const userProfile = await fetchProfile(verifiedUserData.user.id);
-
-          if (!userProfile) {
-            console.warn(`[MUNAJ Auth] Active session exists but profile ${verifiedUserData.user.id} is missing. User deleted.`);
-            await forceAccountTermination(
-              'Your account has been deleted. Please contact an administrator if you believe this was a mistake.'
-            );
-            return;
-          }
-
-          if (userProfile.is_active === false) {
-            console.warn(`[MUNAJ Auth] Active session exists but profile ${verifiedUserData.user.id} is inactive.`);
+          if (userProfile && userProfile.is_active === false) {
+            console.warn(`[MUNAJ Auth] Profile ${userObj.id} is explicitly deactivated.`);
             await forceAccountTermination(
               'Your account has been deactivated. Please contact an administrator if you believe this was a mistake.'
             );
@@ -278,8 +368,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           if (mounted) {
             setSession(initialSession);
-            setUser(verifiedUserData.user);
+            setUser(userObj);
             setProfile(userProfile);
+            clearTerminationNotice();
+
+            // Clean up verification tokens from URL if present
+            if (
+              typeof window !== 'undefined' &&
+              (window.location.hash.includes('access_token') || window.location.search.includes('code='))
+            ) {
+              window.history.replaceState({}, document.title, window.location.pathname);
+            }
           }
         } else {
           console.log('[MUNAJ Auth] No persistent session found on startup.');
@@ -317,24 +416,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (newSession?.user) {
         try {
-          const userProfile = await fetchProfile(newSession.user.id);
+          const userProfile = await fetchProfile(newSession.user.id, newSession.user);
           if (!mounted) return;
-          if (!userProfile) {
+
+          if (userProfile && isWorkerDeleted(userProfile)) {
             forceAccountTermination(
               'Your account has been deleted. Please contact an administrator if you believe this was a mistake.'
             );
-          } else if (userProfile.is_active === false) {
+            return;
+          }
+
+          if (userProfile && userProfile.is_active === false) {
             forceAccountTermination(
               'Your account has been deactivated. Please contact an administrator if you believe this was a mistake.'
             );
-          } else {
+            return;
+          }
+
+          setSession(newSession);
+          setUser(newSession.user);
+          setProfile(userProfile);
+          clearTerminationNotice();
+
+          // Clean up verification tokens from URL if present
+          if (
+            typeof window !== 'undefined' &&
+            (window.location.hash.includes('access_token') || window.location.search.includes('code='))
+          ) {
+            window.history.replaceState({}, document.title, window.location.pathname);
+          }
+        } catch (authErr) {
+          console.warn('[MUNAJ Auth] Profile resolution notice on auth change:', authErr);
+          if (mounted) {
             setSession(newSession);
             setUser(newSession.user);
-            setProfile(userProfile);
-          }
-        } catch {
-          if (mounted) {
-            console.warn('[MUNAJ Auth] Profile verification failed; retaining the session without terminating it.');
           }
         }
       } else {
@@ -350,7 +465,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       mounted = false;
       subscription.unsubscribe();
     };
-  }, [fetchProfile, forceAccountTermination]);
+  }, [fetchProfile, forceAccountTermination, clearTerminationNotice]);
 
   // Realtime Profile Listener & Periodic Session Validation Guard
   useEffect(() => {
@@ -359,7 +474,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const currentUserId = user.id;
     console.log(`[MUNAJ Auth] Establishing realtime account validity listener for user: ${currentUserId}`);
 
-    // Realtime channel to detect immediate profile deletion or deactivation
     const profileChannel = supabase
       .channel(`profile-validity-${currentUserId}`)
       .on(
@@ -399,12 +513,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       )
       .subscribe();
 
-    // Heartbeat session verification every 3 seconds
+    // Heartbeat session verification every 10 seconds
     const interval = setInterval(() => {
       validateCurrentSession();
-    }, 3000);
+    }, 10000);
 
-    // Verify session when window regains focus or visibility
     const handleFocus = () => {
       validateCurrentSession();
     };
@@ -427,11 +540,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [user?.id, forceAccountTermination, validateCurrentSession]);
 
   /**
-   * Signs in user and verifies their account is active.
-   * If the profile does not exist (account deleted) or is deactivated,
-   * rejects the sign-in and logs out immediately.
+   * Signs in admin user with email and password.
+   * Checks for verified email and admin/manager authorization.
    */
-  const signIn = async (email: string, password: string): Promise<{ error: string | null }> => {
+  const signIn = async (
+    email: string,
+    password: string
+  ): Promise<{ error: string | null; needsEmailVerification?: boolean }> => {
     clearTerminationNotice();
     try {
       console.log(`[MUNAJ Auth] Executing signInWithPassword for: ${email.trim()}`);
@@ -442,23 +557,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (error) {
         console.warn('[MUNAJ Auth] signInWithPassword error:', error.message);
+        if (error.message.toLowerCase().includes('email not confirmed')) {
+          return {
+            error: 'Your email address has not been verified yet. Please check your inbox for the confirmation link.',
+            needsEmailVerification: true,
+          };
+        }
         return { error: error.message };
       }
 
       if (data.user) {
-        // Query profiles to confirm account still exists and is not deleted or deactivated
-        const { data: prof, error: profErr } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', data.user.id)
-          .maybeSingle();
-
-        if (profErr) {
-          console.warn('[MUNAJ Auth] Profile check notice on login:', profErr.message);
-          return { error: 'Unable to verify your account profile. Please try again.' };
+        // Check email confirmation status
+        if (!data.user.email_confirmed_at) {
+          await supabase.auth.signOut();
+          return {
+            error: 'Your email address has not been verified yet. Please check your inbox for the confirmation link.',
+            needsEmailVerification: true,
+          };
         }
 
-        if (!prof || isWorkerDeleted(prof)) {
+        const userProfile = await fetchProfile(data.user.id, data.user);
+
+        if (userProfile && isWorkerDeleted(userProfile)) {
           console.warn('[MUNAJ Auth] Account rejection: Account is deleted for user ID:', data.user.id);
           await supabase.auth.signOut();
           const deletedMsg = 'Your account has been deleted. Please contact an administrator if you believe this was a mistake.';
@@ -466,7 +586,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return { error: deletedMsg };
         }
 
-        if (prof.is_active === false) {
+        if (userProfile && userProfile.is_active === false) {
           console.warn('[MUNAJ Auth] Account rejection: Account is deactivated for user ID:', data.user.id);
           await supabase.auth.signOut();
           const deactMsg = 'Your account has been deactivated. Please contact an administrator if you believe this was a mistake.';
@@ -474,10 +594,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return { error: deactMsg };
         }
 
-        console.log('[MUNAJ Auth] Login successful and profile verified:', prof.full_name, prof.role);
+        const role = userProfile?.role || (data.user.user_metadata?.role as string);
+        if (role !== 'admin' && role !== 'manager' && role !== 'super_admin') {
+          await supabase.auth.signOut();
+          return {
+            error: `Administrative Access Restricted: Account ${data.user.email} has the role of ${role}. Only Admins and Managers can enter.`,
+          };
+        }
+
+        console.log('[MUNAJ Auth] Login successful and profile verified:', userProfile?.full_name || data.user.email, role);
         setUser(data.user);
         setSession(data.session);
-        setProfile(prof as Profile);
+        if (userProfile) setProfile(userProfile);
       }
 
       return { error: null };
@@ -488,18 +616,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const signUpAdmin = async (email: string, password: string, fullName: string): Promise<{ error: string | null }> => {
+  /**
+   * Registers a new administrator account. Supabase sends the confirmation email
+   * with a redirect link pointing directly to the app.
+   */
+  const signUpAdmin = async (
+    email: string,
+    password: string,
+    fullName: string
+  ): Promise<{ error: string | null; needsEmailVerification?: boolean }> => {
     clearTerminationNotice();
     try {
-      console.log(`[MUNAJ Auth] Registering new admin account: ${email.trim()}`);
+      const cleanEmail = email.trim();
+      const cleanName = fullName.trim();
+      console.log(`[MUNAJ Auth] Registering new admin account: ${cleanEmail}`);
+
+      const emailRedirectTo = typeof window !== 'undefined' ? window.location.origin : undefined;
+
       const { data, error } = await supabase.auth.signUp({
-        email: email.trim(),
+        email: cleanEmail,
         password,
         options: {
           data: {
-            full_name: fullName.trim(),
+            full_name: cleanName,
             role: 'admin',
           },
+          emailRedirectTo,
         },
       });
 
@@ -512,33 +654,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           errLower.includes('too many requests') ||
           (error as any).status === 429
         ) {
-          return { error: 'Account registration is temporarily rate-limited by Supabase. Please wait a few moments before trying again.' };
+          return {
+            error: 'Account registration is temporarily rate-limited by Supabase. Please wait a few moments before trying again.',
+          };
         }
         return { error: error.message };
       }
 
-      if (data.user) {
-        // Upsert into profiles table
-        const { error: profileError } = await supabase.from('profiles').upsert({
-          id: data.user.id,
-          full_name: fullName.trim(),
-          email: email.trim(),
-          role: 'admin',
-          is_active: true,
-          updated_at: new Date().toISOString(),
-        });
+      // Check if email confirmation is required
+      const needsEmailVerification = !data.session || !data.user?.email_confirmed_at;
 
-        if (profileError) {
-          console.warn('[MUNAJ Auth] Profile creation warning:', profileError.message);
-        }
-
-        const p = await fetchProfile(data.user.id);
-        if (p) {
-          setProfile(p);
-        }
+      if (data.user && !needsEmailVerification) {
+        const p = await fetchProfile(data.user.id, data.user);
+        if (p) setProfile(p);
+        setUser(data.user);
+        setSession(data.session);
       }
 
-      return { error: null };
+      return { error: null, needsEmailVerification };
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Sign up failed';
       return { error: msg };

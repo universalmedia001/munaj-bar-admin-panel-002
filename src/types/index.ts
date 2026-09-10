@@ -90,7 +90,7 @@ export const DEFAULT_OPENING_CASH_FLOAT = 50000;
 export function isWorkerDeleted(
   profile?: { full_name?: string | null; email?: string | null; status?: string | null; is_active?: boolean | null } | null
 ): boolean {
-  if (!profile) return true;
+  if (!profile) return false;
   if (profile.full_name?.startsWith('[DELETED]') || profile.full_name?.startsWith('[Deleted Staff]')) return true;
   if (profile.email?.includes('@munajbar.local') || profile.email?.startsWith('deleted_')) return true;
   if ((profile as any).status === 'deleted' || (profile as any).is_deleted === true) return true;

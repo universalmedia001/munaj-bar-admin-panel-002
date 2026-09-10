@@ -294,6 +294,9 @@ export const CashierSalesReportView: React.FC<CashierSalesReportViewProps> = ({ 
     try {
       setIsSubmittingToAdmin(true);
       await saleService.submitReportToAdmin({
+        workerId: profile?.id,
+        workerRole: profile?.role || 'Cashier',
+        period,
         workerName,
         periodLabel,
         totalSales,
@@ -361,19 +364,19 @@ export const CashierSalesReportView: React.FC<CashierSalesReportViewProps> = ({ 
       <style>{`
         @media print {
           body * {
-            visibility: hidden;
+            visibility: hidden !important;
           }
           #printable-cashier-sales-report, #printable-cashier-sales-report * {
-            visibility: visible;
+            visibility: visible !important;
           }
           #printable-cashier-sales-report {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 100%;
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
             background: white !important;
             color: black !important;
-            padding: 20px;
+            padding: 20px !important;
           }
           .no-print {
             display: none !important;
