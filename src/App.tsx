@@ -57,13 +57,17 @@ function AdminApp() {
     return '/';
   });
 
-  // Track browser navigation and popstate events
+  // Track browser navigation, popstate, and hashchange events
   useEffect(() => {
     const handleLocationChange = () => {
       setCurrentPath(window.location.pathname);
     };
     window.addEventListener('popstate', handleLocationChange);
-    return () => window.removeEventListener('popstate', handleLocationChange);
+    window.addEventListener('hashchange', handleLocationChange);
+    return () => {
+      window.removeEventListener('popstate', handleLocationChange);
+      window.removeEventListener('hashchange', handleLocationChange);
+    };
   }, []);
 
   // Toggle sidebar collapse state and persist to localStorage
@@ -368,7 +372,21 @@ function AdminApp() {
   }, [shifts]);
 
   // 0. Email Verification Success Landing Page (/email-verified)
-  if (currentPath === '/email-verified' || currentPath === '/email-verified/') {
+  const isEmailVerifiedRoute = useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    const cleanPath = currentPath.toLowerCase().replace(/\/+$/, '');
+    const winPath = window.location.pathname.toLowerCase().replace(/\/+$/, '');
+    const hash = window.location.hash.toLowerCase();
+    return (
+      cleanPath === '/email-verified' ||
+      cleanPath.startsWith('/email-verified') ||
+      winPath === '/email-verified' ||
+      winPath.startsWith('/email-verified') ||
+      hash.includes('email-verified')
+    );
+  }, [currentPath]);
+
+  if (isEmailVerifiedRoute) {
     return (
       <EmailVerifiedView
         onNavigateToLogin={() => {

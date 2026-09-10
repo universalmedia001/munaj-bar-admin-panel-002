@@ -1,9 +1,32 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
+import fs from 'fs';
 import { defineConfig, type Plugin } from 'vite';
 import { handleAdminDeleteWorker } from './server/adminDeleteWorker';
 import { handleQzPrintApi } from './server/qzPrintApi';
+
+function spaFallbackPlugin(): Plugin {
+  return {
+    name: 'spa-fallback-plugin',
+    closeBundle() {
+      try {
+        const distDir = path.resolve(__dirname, 'dist');
+        const indexPath = path.join(distDir, 'index.html');
+        if (fs.existsSync(indexPath)) {
+          const emailVerifiedDir = path.join(distDir, 'email-verified');
+          if (!fs.existsSync(emailVerifiedDir)) {
+            fs.mkdirSync(emailVerifiedDir, { recursive: true });
+          }
+          fs.copyFileSync(indexPath, path.join(emailVerifiedDir, 'index.html'));
+          fs.copyFileSync(indexPath, path.join(distDir, 'email-verified.html'));
+        }
+      } catch (err) {
+        console.warn('SPA fallback copy notice:', err);
+      }
+    },
+  };
+}
 
 function apiMiddlewarePlugin(): Plugin {
   return {
@@ -27,7 +50,7 @@ function apiMiddlewarePlugin(): Plugin {
 
 export default defineConfig(() => {
   return {
-    plugins: [react(), tailwindcss(), apiMiddlewarePlugin()],
+    plugins: [react(), tailwindcss(), apiMiddlewarePlugin(), spaFallbackPlugin()],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
