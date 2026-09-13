@@ -10,6 +10,8 @@ import {
   CheckCircle2,
   RefreshCw,
   Info,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useWorkerBranding } from '../../context/BrandingContext';
@@ -23,6 +25,7 @@ export const LoginView: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -137,37 +140,47 @@ export const LoginView: React.FC = () => {
   // Step 6: Verification instruction screen
   if (verificationSentEmail) {
     return (
-      <div className="min-h-screen bg-[#050505] text-[#FFFFFF] flex flex-col justify-center items-center px-4 py-12 selection:bg-[#22C55E]/30">
-        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[500px] h-[500px] bg-emerald-600/10 rounded-full blur-[120px] pointer-events-none" />
+      <div className="min-h-screen bg-[#020604] text-[#FFFFFF] flex flex-col justify-center items-center px-4 py-12 selection:bg-[#00FF66]/30 relative overflow-hidden font-sans">
+        {/* Cinematic Atmospheric Background */}
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_15%,#071A10_0%,#020604_65%,#000000_100%)] pointer-events-none" />
+        <div className="absolute inset-0 opacity-[0.06] bg-[linear-gradient(to_right,#00FF66_1px,transparent_1px),linear-gradient(to_bottom,#00FF66_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_35%,#000_70%,transparent_100%)] pointer-events-none" />
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/3 w-[600px] h-[600px] bg-[#00FF66]/[0.08] rounded-full blur-[140px] pointer-events-none" />
 
         <div className="w-full max-w-md relative z-10">
-          <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-zinc-900 border border-zinc-800 shadow-xl shadow-emerald-950/30 mb-4">
-              <Wine className="w-7 h-7 text-[#22C55E]" />
+          {/* 3D Floating Logo */}
+          <div className="flex flex-col items-center mb-6">
+            <div className="relative mb-4 flex items-center justify-center">
+              <div className="absolute -inset-2 bg-black/80 rounded-3xl blur-xl transform translate-y-3" />
+              <div className="absolute -inset-1 bg-gradient-to-b from-[#00FF66]/30 via-[#00D957]/15 to-transparent rounded-3xl blur-lg opacity-80" />
+              <div className="relative w-20 h-20 rounded-2xl bg-gradient-to-br from-[#1c2820] via-[#09170e] to-[#020704] p-[1.5px] shadow-[0_16px_36px_rgba(0,0,0,0.95),inset_0_1px_1px_rgba(255,255,255,0.25)]">
+                <div className="w-full h-full rounded-[14px] bg-gradient-to-b from-[#0f2316] via-[#08160d] to-[#040b07] flex items-center justify-center border border-[#00FF66]/25 shadow-[inset_0_2px_4px_rgba(0,255,102,0.2)]">
+                  <Wine className="w-9 h-9 text-[#00FF66] drop-shadow-[0_0_14px_rgba(0,255,102,0.8)]" />
+                </div>
+              </div>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white font-sans">
+            <h1 className="text-xl sm:text-2xl font-black tracking-widest text-white uppercase font-sans">
               {workerPosName}
             </h1>
-            <p className="text-xs uppercase tracking-[0.25em] text-[#22C55E] font-bold mt-1">
+            <p className="text-[10px] sm:text-[11px] uppercase tracking-[0.3em] text-[#00FF66] font-bold mt-1">
               Admin & Management Portal
             </p>
           </div>
 
-          <div className="bg-[#111111] rounded-3xl border border-zinc-800/90 p-6 sm:p-8 shadow-2xl backdrop-blur-xl text-center space-y-6">
-            <div className="w-16 h-16 rounded-3xl bg-emerald-950/60 border border-emerald-800/60 flex items-center justify-center mx-auto text-[#22C55E] shadow-xl shadow-emerald-950/40">
+          <div className="rounded-[28px] sm:rounded-[32px] bg-[#071A10]/75 border border-white/10 p-7 sm:p-9 shadow-[0_25px_60px_rgba(0,0,0,0.9),0_0_40px_rgba(0,255,102,0.06),inset_0_1px_1px_rgba(255,255,255,0.12)] backdrop-blur-2xl text-center space-y-6">
+            <div className="w-16 h-16 rounded-2xl bg-[#0a2013] border border-[#00FF66]/40 flex items-center justify-center mx-auto text-[#00FF66] shadow-[0_0_25px_rgba(0,255,102,0.25)]">
               <Mail className="w-8 h-8" />
             </div>
 
             <div>
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-950/70 border border-emerald-800/80 text-[#22C55E] text-[11px] font-bold uppercase tracking-wider mb-2">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#00FF66]/10 border border-[#00FF66]/30 text-[#00FF66] text-[11px] font-bold uppercase tracking-wider mb-2">
                 <CheckCircle2 className="w-3.5 h-3.5" />
                 <span>Verification Link Sent</span>
               </div>
-              <h2 className="text-xl font-black text-white">Check Your Email</h2>
+              <h2 className="text-xl sm:text-2xl font-black text-white">Check Your Email</h2>
               <p className="text-xs text-zinc-400 mt-2 leading-relaxed">
                 We sent a confirmation link to:
               </p>
-              <div className="mt-2 px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-800 font-mono text-xs text-emerald-400 break-all select-all">
+              <div className="mt-2 px-3 py-2 rounded-xl bg-[#020604] border border-white/10 font-mono text-xs text-[#00FF66] break-all select-all">
                 {verificationSentEmail}
               </div>
               <p className="text-xs text-zinc-400 mt-3 leading-relaxed">
@@ -180,7 +193,7 @@ export const LoginView: React.FC = () => {
                 className={`p-3 rounded-xl border text-xs text-left ${
                   resendStatus.includes('Failed') || resendStatus.includes('Error')
                     ? 'bg-red-950/50 border-red-800/70 text-red-300'
-                    : 'bg-emerald-950/50 border-emerald-800/70 text-emerald-300'
+                    : 'bg-[#00FF66]/10 border-[#00FF66]/30 text-[#00FF66]'
                 }`}
               >
                 {resendStatus}
@@ -192,7 +205,7 @@ export const LoginView: React.FC = () => {
                 type="button"
                 onClick={handleResendVerification}
                 disabled={resending || resendCooldown > 0}
-                className="w-full py-3 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700/80 text-white font-semibold text-xs transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-[#00FF66] via-[#00E55C] to-[#00B84A] text-black font-extrabold text-xs uppercase tracking-wider transition-all shadow-[0_4px_20px_rgba(0,255,102,0.3)] hover:brightness-105 flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${resending ? 'animate-spin' : ''}`} />
                 <span>
@@ -211,7 +224,7 @@ export const LoginView: React.FC = () => {
                   setIsSignUp(false);
                   setErrorMsg(null);
                 }}
-                className="w-full py-2.5 rounded-xl text-zinc-400 hover:text-white font-medium text-xs transition-colors"
+                className="w-full py-2.5 rounded-xl text-zinc-400 hover:text-white font-medium text-xs transition-colors cursor-pointer"
               >
                 ← Back to Sign In
               </button>
@@ -223,39 +236,76 @@ export const LoginView: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-[#050505] text-[#FFFFFF] flex flex-col justify-center items-center px-4 py-12 selection:bg-[#22C55E]/30">
-      {/* Background Subtle Gradient Glow */}
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[500px] h-[500px] bg-emerald-600/10 rounded-full blur-[120px] pointer-events-none" />
+    <div className="min-h-screen bg-[#020604] text-[#FFFFFF] flex flex-col justify-center items-center px-4 py-10 sm:py-14 selection:bg-[#00FF66]/30 relative overflow-hidden font-sans">
+      {/* Layer 1: Atmospheric Cinematic Background */}
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_15%,#071A10_0%,#020604_65%,#000000_100%)] pointer-events-none" />
+
+      {/* Layer 2: Subtle Architectural Space Grid */}
+      <div className="absolute inset-0 opacity-[0.06] bg-[linear-gradient(to_right,#00FF66_1px,transparent_1px),linear-gradient(to_bottom,#00FF66_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_35%,#000_70%,transparent_100%)] pointer-events-none" />
+
+      {/* Layer 3: Neon Green Ambient Lighting */}
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/3 w-[620px] h-[620px] bg-[#00FF66]/[0.09] rounded-full blur-[140px] pointer-events-none" />
+      <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-[720px] h-[360px] bg-[#00D957]/[0.05] rounded-full blur-[160px] pointer-events-none" />
+      <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[800px] h-[260px] bg-[#00B84A]/[0.03] rounded-full blur-[130px] pointer-events-none" />
 
       <div className="w-full max-w-md relative z-10">
-        {/* Brand Header */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-zinc-900 border border-zinc-800 shadow-xl shadow-emerald-950/30 mb-4">
-            <Wine className="w-7 h-7 text-[#22C55E]" />
+        {/* MUNAJ BAR 3D Floating Dimensional Logo */}
+        <div className="flex flex-col items-center mb-6 sm:mb-8 group">
+          <div className="relative mb-3.5 flex items-center justify-center">
+            {/* Soft Ambient Depth Shadow */}
+            <div className="absolute -inset-3 bg-black/90 rounded-3xl blur-xl transform translate-y-3.5" />
+            {/* Neon Green Ambient Aura */}
+            <div className="absolute -inset-1.5 bg-gradient-to-b from-[#00FF66]/35 via-[#00D957]/20 to-transparent rounded-3xl blur-lg opacity-80 group-hover:opacity-100 transition-opacity" />
+
+            {/* 3D Beveled Outer Metallic Shield */}
+            <div className="relative w-20 h-20 sm:w-22 sm:h-22 rounded-2xl bg-gradient-to-br from-[#1c2820] via-[#09170e] to-[#020704] p-[1.5px] shadow-[0_16px_36px_rgba(0,0,0,0.95),inset_0_1px_1px_rgba(255,255,255,0.28)]">
+              {/* Inner Metallic Facet */}
+              <div className="w-full h-full rounded-[14px] bg-gradient-to-b from-[#0f2316] via-[#08160d] to-[#040b07] flex items-center justify-center border border-[#00FF66]/25 shadow-[inset_0_2px_4px_rgba(0,255,102,0.25),inset_0_-2px_4px_rgba(0,0,0,0.8)] relative overflow-hidden">
+                {/* Metallic Sheen Highlight */}
+                <div className="absolute -top-6 left-0 right-0 h-10 bg-gradient-to-b from-white/15 to-transparent transform -skew-y-12 pointer-events-none" />
+                {/* Glowing Neon Green Logo Motif */}
+                <Wine className="w-9 h-9 sm:w-10 sm:h-10 text-[#00FF66] drop-shadow-[0_0_14px_rgba(0,255,102,0.85)]" />
+              </div>
+            </div>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white font-sans">
+
+          <h1 className="text-xl sm:text-2xl font-black tracking-widest text-white uppercase font-sans drop-shadow-md">
             {workerPosName}
           </h1>
-          <p className="text-xs uppercase tracking-[0.25em] text-[#22C55E] font-bold mt-1">
+          <p className="text-[10px] sm:text-[11px] uppercase tracking-[0.35em] text-[#00FF66] font-bold mt-1 drop-shadow-[0_0_8px_rgba(0,255,102,0.4)]">
             Admin & Management Portal
-          </p>
-          <p className="text-xs text-zinc-400 mt-2 max-w-xs mx-auto leading-relaxed">
-            Centralized control center for realtime sales, inventory auditing, cashier shifts, and thermal receipts.
           </p>
         </div>
 
-        {/* Auth Card */}
-        <div className="bg-[#111111] rounded-3xl border border-zinc-800/90 p-6 sm:p-8 shadow-2xl backdrop-blur-xl">
-          <div className="flex items-center justify-between pb-4 mb-5 border-b border-zinc-800/80">
-            <div>
-              <h2 className="text-sm font-bold text-white">
-                {isSignUp ? 'Initialize Administrator Account' : 'Administrative Sign In'}
-              </h2>
-              <p className="text-[11px] text-zinc-400 mt-0.5">
-                {isSignUp ? 'Setup master admin credentials' : 'Enter your staff credentials to proceed'}
-              </p>
-            </div>
-            <ShieldCheck className="w-5 h-5 text-[#22C55E]" />
+        {/* Premium Glassmorphism Card */}
+        <div className="relative rounded-[28px] sm:rounded-[32px] bg-[#071A10]/75 border border-white/10 p-7 sm:p-9 shadow-[0_25px_60px_rgba(0,0,0,0.9),0_0_40px_rgba(0,255,102,0.06),inset_0_1px_1px_rgba(255,255,255,0.12)] backdrop-blur-2xl">
+          {/* Subtle Top Rim Highlight */}
+          <div className="absolute top-0 left-12 right-12 h-[1px] bg-gradient-to-r from-transparent via-[#00FF66]/50 to-transparent pointer-events-none" />
+
+          {/* Heading */}
+          <div className="text-center mb-7">
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+              {isSignUp ? (
+                <>
+                  Initialize{' '}
+                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#00FF66] via-[#00E55C] to-[#00D957] drop-shadow-[0_0_12px_rgba(0,255,102,0.4)]">
+                    Admin
+                  </span>
+                </>
+              ) : (
+                <>
+                  Welcome{' '}
+                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#00FF66] via-[#00E55C] to-[#00D957] drop-shadow-[0_0_12px_rgba(0,255,102,0.4)]">
+                    Back
+                  </span>
+                </>
+              )}
+            </h2>
+            <p className="text-xs text-zinc-400 mt-1.5 font-medium">
+              {isSignUp
+                ? 'Setup master administrator credentials'
+                : 'Sign in to continue to your management portal'}
+            </p>
           </div>
 
           {displayNotice && (
@@ -276,7 +326,7 @@ export const LoginView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => clearTerminationNotice()}
-                  className="text-[11px] text-amber-400/80 hover:text-amber-200 underline shrink-0 ml-1"
+                  className="text-[11px] text-amber-400/80 hover:text-amber-200 underline shrink-0 ml-1 cursor-pointer"
                 >
                   Dismiss
                 </button>
@@ -284,109 +334,229 @@ export const LoginView: React.FC = () => {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-3.5">
             {isSignUp && (
-              <div>
-                <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
-                  Full Name
-                </label>
-                <div className="relative">
-                  <User className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500" />
+              <div className="relative rounded-2xl bg-[#0A0D0C]/80 border border-white/[0.08] hover:border-white/[0.16] focus-within:border-[#00FF66] focus-within:ring-1 focus-within:ring-[#00FF66]/40 focus-within:bg-[#071A10]/90 transition-all p-3 sm:py-3 sm:px-4 flex items-center gap-3.5 shadow-inner group">
+                <User className="w-5 h-5 text-zinc-500 group-focus-within:text-[#00FF66] transition-colors shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <label className="block text-[10px] font-semibold text-zinc-400 tracking-wide uppercase group-focus-within:text-[#00FF66] transition-colors">
+                    Full Name
+                  </label>
                   <input
                     type="text"
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                     placeholder="Chief Admin / Bar General Manager"
                     required={isSignUp}
-                    className="w-full pl-9 pr-4 py-2.5 rounded-xl bg-zinc-900 border border-zinc-800 focus:border-[#22C55E] text-white text-xs outline-none transition-colors"
+                    className="w-full bg-transparent text-white text-xs sm:text-sm font-normal outline-none placeholder:text-zinc-600 font-sans"
                   />
                 </div>
               </div>
             )}
 
-            <div>
-              <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
-                Email Address
-              </label>
-              <div className="relative">
-                <Mail className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500" />
+            {/* Email Address Input Container */}
+            <div className="relative rounded-2xl bg-[#0A0D0C]/80 border border-white/[0.08] hover:border-white/[0.16] focus-within:border-[#00FF66] focus-within:ring-1 focus-within:ring-[#00FF66]/40 focus-within:bg-[#071A10]/90 transition-all p-3 sm:py-3 sm:px-4 flex items-center gap-3.5 shadow-inner group">
+              <Mail className="w-5 h-5 text-zinc-500 group-focus-within:text-[#00FF66] transition-colors shrink-0" />
+              <div className="flex-1 min-w-0">
+                <label className="block text-[10px] font-semibold text-zinc-400 tracking-wide uppercase group-focus-within:text-[#00FF66] transition-colors">
+                  Email Address
+                </label>
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="admin@munajbar.com"
+                  placeholder="Enter your email"
                   required
-                  className="w-full pl-9 pr-4 py-2.5 rounded-xl bg-zinc-900 border border-zinc-800 focus:border-[#22C55E] text-white text-xs outline-none transition-colors"
+                  className="w-full bg-transparent text-white text-xs sm:text-sm font-normal outline-none placeholder:text-zinc-600 font-sans"
                 />
               </div>
             </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
-                Password
-              </label>
-              <div className="relative">
-                <Lock className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500" />
+            {/* Password Input Container */}
+            <div className="relative rounded-2xl bg-[#0A0D0C]/80 border border-white/[0.08] hover:border-white/[0.16] focus-within:border-[#00FF66] focus-within:ring-1 focus-within:ring-[#00FF66]/40 focus-within:bg-[#071A10]/90 transition-all p-3 sm:py-3 sm:px-4 flex items-center gap-3.5 shadow-inner group">
+              <Lock className="w-5 h-5 text-zinc-500 group-focus-within:text-[#00FF66] transition-colors shrink-0" />
+              <div className="flex-1 min-w-0">
+                <label className="block text-[10px] font-semibold text-zinc-400 tracking-wide uppercase group-focus-within:text-[#00FF66] transition-colors">
+                  Password
+                </label>
                 <input
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••••••"
+                  placeholder="Enter your password"
                   required
-                  className="w-full pl-9 pr-4 py-2.5 rounded-xl bg-zinc-900 border border-zinc-800 focus:border-[#22C55E] text-white text-xs outline-none transition-colors font-mono"
+                  className="w-full bg-transparent text-white text-xs sm:text-sm font-normal outline-none font-mono placeholder:text-zinc-600"
                 />
               </div>
+              <button
+                type="button"
+                onClick={() => setShowPassword((prev) => !prev)}
+                tabIndex={-1}
+                className="text-zinc-500 hover:text-white transition-colors cursor-pointer p-1"
+                title={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
             </div>
 
+            {/* Forgot Password Link */}
+            <div className="flex justify-end pt-0.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setErrorMsg(
+                    'To reset your password, contact your master administrator or configure Supabase recovery for admin@munajbar.com'
+                  );
+                }}
+                className="text-xs text-zinc-400 hover:text-[#00FF66] transition-colors font-medium cursor-pointer"
+              >
+                Forgot Password?
+              </button>
+            </div>
+
+            {/* Large Premium Sign-In Action Button */}
             <button
               type="submit"
               disabled={loading}
-              className="w-full mt-2 flex items-center justify-center gap-2 py-3 rounded-xl bg-[#22C55E] hover:bg-[#1ea750] text-black font-bold text-xs uppercase tracking-wider transition-all shadow-lg shadow-emerald-950/40 disabled:opacity-50 cursor-pointer"
+              className="w-full mt-4 py-3.5 sm:py-4 px-6 rounded-2xl bg-gradient-to-r from-[#00FF66] via-[#00E55C] to-[#00B84A] hover:from-[#14ff73] hover:to-[#00c850] text-black font-extrabold text-sm tracking-wide transition-all shadow-[0_6px_25px_rgba(0,255,102,0.35)] hover:shadow-[0_8px_35px_rgba(0,255,102,0.5)] hover:brightness-105 active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
             >
               {loading ? (
-                <span>Authenticating...</span>
+                <span>Signing in...</span>
               ) : (
                 <>
-                  <span>{isSignUp ? 'Create Admin & Enter' : 'Enter Admin Control Panel'}</span>
-                  <ArrowRight className="w-4 h-4" />
+                  <span>{isSignUp ? 'Create Account' : 'Sign In'}</span>
+                  <ArrowRight className="w-4 h-4 stroke-[2.5]" />
                 </>
               )}
             </button>
           </form>
 
-          {/* Toggle between Sign In & Admin Setup */}
-          <div className="mt-5 pt-4 border-t border-zinc-800/80 text-center flex items-center justify-between text-xs text-zinc-400">
+          {/* "or continue with" Divider */}
+          <div className="relative flex items-center justify-center my-6">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-white/[0.08]" />
+            </div>
+            <div className="relative px-3 bg-[#071A10] text-[11px] uppercase tracking-wider text-zinc-400 font-medium">
+              or continue with
+            </div>
+          </div>
+
+          {/* Social Login Area */}
+          <div className="grid grid-cols-3 gap-3 mb-6">
+            {/* Google */}
             <button
               type="button"
-              onClick={() => {
-                setIsSignUp(!isSignUp);
-                setErrorMsg(null);
-                setResendStatus(null);
-              }}
-              className="text-[#22C55E] hover:underline font-semibold"
+              onClick={() =>
+                setErrorMsg(
+                  'Single Sign-On (Google Workspace) is reserved for domain managers. Use your email & password or Fill Sample Admin.'
+                )
+              }
+              className="h-12 rounded-2xl bg-white/[0.03] border border-white/[0.08] hover:border-[#00FF66]/50 hover:bg-white/[0.06] hover:shadow-[0_0_15px_rgba(0,255,102,0.2)] transition-all flex items-center justify-center cursor-pointer group"
+              title="Sign in with Google"
             >
-              {isSignUp ? '← Back to Sign In' : 'Setup Initial Admin Account →'}
+              <svg className="w-5 h-5 transition-transform group-hover:scale-110" viewBox="0 0 24 24">
+                <path
+                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                  fill="#4285F4"
+                />
+                <path
+                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                  fill="#34A853"
+                />
+                <path
+                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                  fill="#FBBC05"
+                />
+                <path
+                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                  fill="#EA4335"
+                />
+              </svg>
             </button>
 
+            {/* GitHub */}
+            <button
+              type="button"
+              onClick={() =>
+                setErrorMsg(
+                  'Single Sign-On (GitHub Enterprise) is reserved for domain managers. Use your email & password or Fill Sample Admin.'
+                )
+              }
+              className="h-12 rounded-2xl bg-white/[0.03] border border-white/[0.08] hover:border-[#00FF66]/50 hover:bg-white/[0.06] hover:shadow-[0_0_15px_rgba(0,255,102,0.2)] transition-all flex items-center justify-center cursor-pointer group"
+              title="Sign in with GitHub"
+            >
+              <svg
+                className="w-5 h-5 fill-current text-white/80 group-hover:text-white transition-all group-hover:scale-110"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  fillRule="evenodd"
+                  clipRule="evenodd"
+                  d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"
+                />
+              </svg>
+            </button>
+
+            {/* LinkedIn */}
+            <button
+              type="button"
+              onClick={() =>
+                setErrorMsg(
+                  'Single Sign-On (LinkedIn) is reserved for domain managers. Use your email & password or Fill Sample Admin.'
+                )
+              }
+              className="h-12 rounded-2xl bg-white/[0.03] border border-white/[0.08] hover:border-[#00FF66]/50 hover:bg-white/[0.06] hover:shadow-[0_0_15px_rgba(0,255,102,0.2)] transition-all flex items-center justify-center cursor-pointer group"
+              title="Sign in with LinkedIn"
+            >
+              <svg className="w-5 h-5 fill-current text-[#00FF66] group-hover:text-white transition-all group-hover:scale-110" viewBox="0 0 24 24">
+                <path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.28 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.75M6.88 8.56a1.68 1.68 0 0 0 1.68-1.68c0-.93-.75-1.69-1.68-1.69a1.69 1.69 0 0 0-1.69 1.69c0 .93.76 1.68 1.69 1.68m1.39 9.94v-8.37H5.5v8.37h2.77z"/>
+              </svg>
+            </button>
+          </div>
+
+          {/* Sign Up Footer */}
+          <div className="text-center pt-1 border-t border-white/[0.06]">
+            <p className="text-xs text-zinc-400 mt-4">
+              {isSignUp ? (
+                <>
+                  Already have an account?{' '}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsSignUp(false);
+                      setErrorMsg(null);
+                    }}
+                    className="text-[#00FF66] font-semibold hover:underline cursor-pointer ml-1"
+                  >
+                    Sign In
+                  </button>
+                </>
+              ) : (
+                <>
+                  Don't have an account?{' '}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsSignUp(true);
+                      setErrorMsg(null);
+                    }}
+                    className="text-[#00FF66] font-semibold hover:underline cursor-pointer ml-1"
+                  >
+                    Sign Up
+                  </button>
+                </>
+              )}
+            </p>
+
+            {/* Quick Fill Sample Admin for demo & testing */}
             <button
               type="button"
               onClick={handleDemoAdminLogin}
-              className="text-zinc-500 hover:text-zinc-300 text-[11px] underline"
+              className="mt-3 text-[11px] text-zinc-500 hover:text-[#00FF66] underline cursor-pointer transition-colors"
             >
               Fill Sample Admin
             </button>
           </div>
-        </div>
-
-        {/* POS Distinction Disclaimer */}
-        <div className="mt-6 p-4 rounded-2xl bg-zinc-900/60 border border-zinc-800/60 text-center text-xs text-zinc-400 flex items-start gap-2.5">
-          <Info className="w-4 h-4 shrink-0 text-zinc-500 mt-0.5" />
-          <p className="text-left text-[11px] leading-relaxed">
-            <strong className="text-white font-semibold">Security Note:</strong> Only accounts with{' '}
-            <span className="text-[#22C55E] font-semibold">admin</span> or{' '}
-            <span className="text-blue-400 font-semibold">manager</span> roles can sign in here.
-            Floor cashiers and bar sales workers must authenticate via the {workerPosName} POS Terminal.
-          </p>
         </div>
       </div>
     </div>
