@@ -49,6 +49,7 @@ export async function handleAdminDeleteWorker(req: IncomingMessage, res: ServerR
 
   try {
     // 1. Read JSON request body (supports both pre-parsed body from Vercel Serverless and stream from Express)
+    console.info('[AdminDeleteWorker] Step 1: Parsing request body...');
     let body: { user_id?: string; userId?: string } = {};
     const existingBody = (req as any).body;
 
@@ -70,6 +71,7 @@ export async function handleAdminDeleteWorker(req: IncomingMessage, res: ServerR
         try {
           body = JSON.parse(bodyText);
         } catch {
+          console.error('[AdminDeleteWorker] [FAILED AT STEP 1] Invalid JSON payload received.');
           res.statusCode = 400;
           res.end(JSON.stringify({ success: false, error: 'Invalid JSON payload' }));
           return true;
@@ -88,14 +90,18 @@ export async function handleAdminDeleteWorker(req: IncomingMessage, res: ServerR
 
     const targetUserId = body.user_id || body.userId || queryUserId;
     if (!targetUserId) {
+      console.error('[AdminDeleteWorker] [FAILED AT STEP 1] Missing target user_id.');
       res.statusCode = 400;
       res.end(JSON.stringify({ success: false, error: 'Target user_id is required' }));
       return true;
     }
+    console.info(`[AdminDeleteWorker] Step 1 OK: Target user_id is ${targetUserId}.`);
 
     // 2. Verify requesting user's authorization header
+    console.info('[AdminDeleteWorker] Step 2: Verifying admin authorization token...');
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.error('[AdminDeleteWorker] [FAILED AT STEP 2] Missing or invalid Authorization header.');
       res.statusCode = 401;
       res.end(JSON.stringify({ success: false, error: 'Unauthorized: Missing authorization token' }));
       return true;
@@ -113,14 +119,17 @@ export async function handleAdminDeleteWorker(req: IncomingMessage, res: ServerR
 
     const { data: userData, error: userError } = await userClient.auth.getUser(token);
     if (userError || !userData?.user) {
+      console.error('[AdminDeleteWorker] [FAILED AT STEP 2] Invalid session token:', userError?.message || 'No user data');
       res.statusCode = 401;
       res.end(JSON.stringify({ success: false, error: 'Unauthorized: Invalid or expired session' }));
       return true;
     }
 
     const requestingUser = userData.user;
+    console.info(`[AdminDeleteWorker] Step 2 OK: Authenticated as user ${requestingUser.id}.`);
 
     // 3. Verify requesting user has admin/manager role
+    console.info('[AdminDeleteWorker] Step 3: Checking requester administrator privileges...');
     const { data: requesterProfile } = await userClient
       .from('profiles')
       .select('id, role, is_active, full_name')
@@ -131,6 +140,7 @@ export async function handleAdminDeleteWorker(req: IncomingMessage, res: ServerR
     const effectiveRole = requesterProfile?.role || (requestingUser.user_metadata?.role as string);
 
     if (!effectiveRole || !allowedRoles.includes(effectiveRole.toLowerCase())) {
+      console.error(`[AdminDeleteWorker] [FAILED AT STEP 3] Forbidden: User role "${effectiveRole}" is not authorized.`);
       res.statusCode = 403;
       res.end(JSON.stringify({ success: false, error: 'Forbidden: Worker/POS sessions are not allowed to delete accounts' }));
       return true;
@@ -138,25 +148,35 @@ export async function handleAdminDeleteWorker(req: IncomingMessage, res: ServerR
 
     // 4. Prevent self-deletion
     if (requestingUser.id === targetUserId) {
+      console.error('[AdminDeleteWorker] [FAILED AT STEP 3] Self-deletion attempted and blocked.');
       res.statusCode = 400;
       res.end(JSON.stringify({ success: false, error: 'You cannot delete your own active administrator account' }));
       return true;
     }
+    console.info(`[AdminDeleteWorker] Step 3 OK: Requester has valid role "${effectiveRole}".`);
 
+    // 4. Check server-side privileged credential
+    console.info('[AdminDeleteWorker] Step 4: Checking server-side privileged credential (SUPABASE_SECRET_KEY)...');
     const serviceRoleKey = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || SUPABASE_SERVICE_ROLE_KEY;
 
     if (!serviceRoleKey) {
+      console.error('[AdminDeleteWorker] [FAILED AT STEP 4: MISSING VERCEL / SERVER CREDENTIAL]');
+      console.error('[AdminDeleteWorker] Neither SUPABASE_SECRET_KEY nor SUPABASE_SERVICE_ROLE_KEY is set in the server environment.');
+      console.error('[AdminDeleteWorker] To resolve: Add SUPABASE_SECRET_KEY to your Vercel Project Settings > Environment Variables.');
       res.statusCode = 500;
       res.end(
         JSON.stringify({
           success: false,
-          error: 'Server configuration error: Supabase server secret key is not configured on the server.',
+          error: 'Server configuration error: Supabase server secret key (SUPABASE_SECRET_KEY) is not configured in environment variables.',
+          step: 'MISSING_SUPABASE_SECRET_KEY',
         })
       );
       return true;
     }
+    console.info('[AdminDeleteWorker] Step 4 OK: Privileged Supabase credential is present.');
 
-    // 5. Check target user profile
+    // 5. Check target user profile and initialize Admin Client
+    console.info('[AdminDeleteWorker] Step 5: Initializing Supabase Auth Admin client...');
     const { data: targetProfile } = await userClient
       .from('profiles')
       .select('id, role, full_name, email')
@@ -169,8 +189,9 @@ export async function handleAdminDeleteWorker(req: IncomingMessage, res: ServerR
       adminClient = createClient(activeSupabaseUrl, serviceRoleKey, {
         auth: { autoRefreshToken: false, persistSession: false },
       });
+      console.info(`[AdminDeleteWorker] Step 5 OK: Auth Admin client initialized against ${activeSupabaseUrl}.`);
     } catch (adminEx) {
-      console.error('[AdminDeleteWorker] Auth Admin client init error:', adminEx);
+      console.error('[AdminDeleteWorker] [FAILED AT STEP 5] Auth Admin client init error:', adminEx);
       res.statusCode = 500;
       res.end(JSON.stringify({ success: false, error: 'Server configuration error: Unable to initialize the Auth Admin client.' }));
       return true;
@@ -181,10 +202,11 @@ export async function handleAdminDeleteWorker(req: IncomingMessage, res: ServerR
     const cleanName = targetName.replace(/^\[DELETED\]\s*/i, '').replace(/^\[Deleted Staff\]\s*/i, '').trim();
     const performerName = requesterProfile?.full_name || requestingUser.email || 'Admin';
 
-    // Delete and verify the Auth account before removing its profile.
+    // 6. Delete and verify the Auth account before removing its profile.
+    console.info(`[AdminDeleteWorker] Step 6: Deleting Supabase Auth user ${targetUserId}...`);
     const { error: authDelErr } = await adminClient.auth.admin.deleteUser(targetUserId);
     if (authDelErr && !authDelErr.message.toLowerCase().includes('not found')) {
-      console.error('[AdminDeleteWorker] Auth Admin deleteUser error:', authDelErr.message);
+      console.error('[AdminDeleteWorker] [FAILED AT STEP 6] Auth Admin deleteUser error:', authDelErr.message);
       res.statusCode = 500;
       res.end(JSON.stringify({ success: false, error: `Auth account deletion failed: ${authDelErr.message}` }));
       return true;
@@ -192,21 +214,22 @@ export async function handleAdminDeleteWorker(req: IncomingMessage, res: ServerR
 
     const { data: remainingAuthUser, error: authVerifyErr } = await adminClient.auth.admin.getUserById(targetUserId);
     if (authVerifyErr && !authVerifyErr.message.toLowerCase().includes('not found')) {
-      console.error('[AdminDeleteWorker] Auth deletion verification error:', authVerifyErr.message);
+      console.error('[AdminDeleteWorker] [FAILED AT STEP 6] Auth deletion verification error:', authVerifyErr.message);
       res.statusCode = 500;
       res.end(JSON.stringify({ success: false, error: `Auth account deletion could not be verified: ${authVerifyErr.message}` }));
       return true;
     }
 
     if (remainingAuthUser?.user) {
+      console.error('[AdminDeleteWorker] [FAILED AT STEP 6] Auth account still exists after deletion attempt.');
       res.statusCode = 500;
       res.end(JSON.stringify({ success: false, error: 'Auth account deletion could not be verified: the worker Auth user still exists.' }));
       return true;
     }
+    console.info('[AdminDeleteWorker] Step 6 OK: Supabase Auth user successfully removed.');
 
-    // 6. Safe shifts, sales, receipts cleanup:
-    // Disassociate foreign keys so historical business records remain 100% intact in the database
-    // while permitting hard deletion of the profile row without FK constraint violations (code 23503)
+    // 7. Safe shifts, sales, receipts cleanup:
+    console.info('[AdminDeleteWorker] Step 7: Preserving business records and disassociating foreign keys...');
     try {
       // Close active shifts
       await activeDb
@@ -275,19 +298,21 @@ export async function handleAdminDeleteWorker(req: IncomingMessage, res: ServerR
       console.warn('[AdminDeleteWorker] Notification delete notice:', e);
     }
 
-    // 7. Delete from public.profiles
+    // 8. Delete from public.profiles
+    console.info(`[AdminDeleteWorker] Step 8: Deleting worker profile ${targetUserId} from public.profiles...`);
     const { error: profileDeleteError } = await activeDb
       .from('profiles')
       .delete()
       .eq('id', targetUserId);
 
     if (profileDeleteError) {
-      console.error('[AdminDeleteWorker] Profile delete error:', profileDeleteError.message);
+      console.error('[AdminDeleteWorker] [FAILED AT STEP 8] Profile delete error:', profileDeleteError.message);
       res.statusCode = 500;
       res.end(
         JSON.stringify({
           success: false,
           error: `Database profile deletion failed: ${profileDeleteError.message}`,
+          step: 'PROFILE_DELETE_FAILED',
         })
       );
       return true;
@@ -301,17 +326,21 @@ export async function handleAdminDeleteWorker(req: IncomingMessage, res: ServerR
       .maybeSingle();
 
     if (checkProf) {
+      console.error('[AdminDeleteWorker] [FAILED AT STEP 8] Profile still exists after delete query.');
       res.statusCode = 500;
       res.end(
         JSON.stringify({
           success: false,
           error: 'Failed to delete worker profile from the database.',
+          step: 'PROFILE_VERIFICATION_FAILED',
         })
       );
       return true;
     }
+    console.info('[AdminDeleteWorker] Step 8 OK: Worker profile successfully removed.');
 
     // 9. Record Activity Audit Log
+    console.info('[AdminDeleteWorker] Step 9: Inserting audit log into activity_logs...');
     try {
       await activeDb.from('activity_logs').insert({
         action: 'user_deleted',
@@ -333,6 +362,7 @@ export async function handleAdminDeleteWorker(req: IncomingMessage, res: ServerR
       // non-blocking
     }
 
+    console.info(`[AdminDeleteWorker] Step 10: Deletion complete for worker ${targetUserId}. Responding with 200 OK.`);
     res.statusCode = 200;
     res.end(
       JSON.stringify({
@@ -344,9 +374,9 @@ export async function handleAdminDeleteWorker(req: IncomingMessage, res: ServerR
     return true;
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : 'Internal Server Error';
-    console.error('[AdminDeleteWorker] Exception:', errorMsg);
+    console.error('[AdminDeleteWorker] [UNHANDLED EXCEPTION]:', errorMsg);
     res.statusCode = 500;
-    res.end(JSON.stringify({ success: false, error: errorMsg }));
+    res.end(JSON.stringify({ success: false, error: errorMsg, step: 'UNHANDLED_EXCEPTION' }));
     return true;
   }
 }
