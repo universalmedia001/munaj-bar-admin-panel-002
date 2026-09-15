@@ -17,6 +17,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   X,
+  Wallet,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useWorkerBranding } from '../../context/BrandingContext';
@@ -93,6 +94,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
     { id: 'activity', label: 'Activity Logs', icon: Activity },
     { id: 'reports', label: 'Reports & Analytics', icon: BarChart3 },
+    { id: 'expenses', label: 'Expenses & P&L', icon: Wallet },
     { id: 'settings', label: 'Business Settings', icon: Settings },
     { id: 'database', label: 'Database & Sync', icon: DatabaseIcon },
   ];
