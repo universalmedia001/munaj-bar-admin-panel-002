@@ -21,46 +21,72 @@ export async function handleAdminDeleteWorker(req: IncomingMessage, res: ServerR
   const url = req.url || '';
   const pathname = url.split('?')[0];
 
-  if (pathname !== '/api/admin/delete-worker' && pathname !== '/api/admin/delete-worker/') {
+  if (
+    pathname !== '/api/admin/delete-worker' &&
+    pathname !== '/api/admin/delete-worker/'
+  ) {
     return false;
   }
 
   res.setHeader('Content-Type', 'application/json');
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
-  if (req.method === 'OPTIONS') {
+  const method = (req.method || '').toUpperCase().trim();
+
+  if (method === 'OPTIONS') {
     res.statusCode = 204;
     res.end();
     return true;
   }
 
-  if (req.method !== 'POST') {
+  if (method !== 'POST' && method !== 'DELETE') {
     res.statusCode = 405;
-    res.end(JSON.stringify({ success: false, error: 'Method not allowed' }));
+    res.end(JSON.stringify({ success: false, error: 'Method not allowed. Use POST or DELETE.' }));
     return true;
   }
 
   try {
-    // 1. Read JSON request body
-    const chunks: Uint8Array[] = [];
-    for await (const chunk of req) {
-      chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
-    }
-    const bodyText = Buffer.concat(chunks).toString('utf-8');
-    let body: { user_id?: string } = {};
-    if (bodyText) {
+    // 1. Read JSON request body (supports both pre-parsed body from Vercel Serverless and stream from Express)
+    let body: { user_id?: string; userId?: string } = {};
+    const existingBody = (req as any).body;
+
+    if (existingBody && typeof existingBody === 'object') {
+      body = existingBody;
+    } else if (existingBody && typeof existingBody === 'string') {
       try {
-        body = JSON.parse(bodyText);
+        body = JSON.parse(existingBody);
       } catch {
-        res.statusCode = 400;
-        res.end(JSON.stringify({ success: false, error: 'Invalid JSON payload' }));
-        return true;
+        // ignore parse warning
+      }
+    } else {
+      const chunks: Uint8Array[] = [];
+      for await (const chunk of req) {
+        chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
+      }
+      const bodyText = Buffer.concat(chunks).toString('utf-8');
+      if (bodyText) {
+        try {
+          body = JSON.parse(bodyText);
+        } catch {
+          res.statusCode = 400;
+          res.end(JSON.stringify({ success: false, error: 'Invalid JSON payload' }));
+          return true;
+        }
       }
     }
 
-    const targetUserId = body.user_id;
+    // Also support user_id from query parameters
+    let queryUserId: string | null = null;
+    try {
+      const urlObj = new URL(req.url || '', 'http://localhost');
+      queryUserId = urlObj.searchParams.get('user_id') || urlObj.searchParams.get('userId');
+    } catch {
+      // ignore url parse error
+    }
+
+    const targetUserId = body.user_id || body.userId || queryUserId;
     if (!targetUserId) {
       res.statusCode = 400;
       res.end(JSON.stringify({ success: false, error: 'Target user_id is required' }));
@@ -117,7 +143,9 @@ export async function handleAdminDeleteWorker(req: IncomingMessage, res: ServerR
       return true;
     }
 
-    if (!SUPABASE_SERVICE_ROLE_KEY) {
+    const serviceRoleKey = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!serviceRoleKey) {
       res.statusCode = 500;
       res.end(
         JSON.stringify({
@@ -137,7 +165,8 @@ export async function handleAdminDeleteWorker(req: IncomingMessage, res: ServerR
 
     let adminClient: ReturnType<typeof createClient>;
     try {
-      adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+      const activeSupabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || SUPABASE_URL;
+      adminClient = createClient(activeSupabaseUrl, serviceRoleKey, {
         auth: { autoRefreshToken: false, persistSession: false },
       });
     } catch (adminEx) {

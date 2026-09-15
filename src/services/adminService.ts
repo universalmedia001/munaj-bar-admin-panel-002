@@ -207,7 +207,7 @@ export async function deleteWorkerAccount(
     };
   }
 
-  // 3. Primary: Call Server-Side API endpoint '/api/admin/delete-worker'
+  // 3. Primary: Call Server-Side API endpoint '/api/admin/delete-worker' (Express / local dev / Vercel Serverless route)
   try {
     console.info(`[adminService] Attempting server API endpoint deletion for user ${userId} (${userFullName})...`);
     const { data: sessionData } = await supabase.auth.getSession();
@@ -223,27 +223,33 @@ export async function deleteWorkerAccount(
         body: JSON.stringify({ user_id: userId }),
       });
 
-      if (response.ok) {
-        const result = await response.json();
-        if (result.success) {
-          console.info(`[adminService] Server API endpoint successfully deleted worker ${userId}.`);
-          return {
-            success: true,
-            message: result.message || 'User deleted successfully.',
-          };
-        } else {
+      const result = await response.json().catch(() => null);
+
+      if (response.ok && result?.success) {
+        console.info(`[adminService] Server API endpoint successfully deleted worker ${userId}.`);
+        return {
+          success: true,
+          message: result.message || 'Staff account permanently deleted.',
+        };
+      }
+
+      // If the server explicitly returned an error (e.g., 400, 401, 403, 500)
+      if (result && !result.success && result.error) {
+        // If 404, endpoint might not be routed; allow fall-through to edge function
+        if (response.status !== 404) {
           return {
             success: false,
-            message: result.error || 'Failed to delete worker account.',
+            message: result.error,
             error: result.error,
           };
         }
-      } else {
-        const errJson = await response.json().catch(() => null);
+      }
+
+      if (!response.ok && response.status !== 404) {
         return {
           success: false,
-          message: errJson?.error || `Failed to delete worker account (${response.statusText || response.status}).`,
-          error: errJson?.error || `HTTP_${response.status}`,
+          message: result?.error || `Failed to delete worker account (${response.status}).`,
+          error: result?.error || `HTTP_${response.status}`,
         };
       }
     }
@@ -251,18 +257,28 @@ export async function deleteWorkerAccount(
     console.warn('[adminService] Server API endpoint notice:', apiErr);
   }
 
-  // 4. Secondary: Call Supabase Edge Function 'delete-worker'
+  // 4. Secondary: Call Supabase Edge Function 'delete-worker' (Fallback if server API route is 404/unavailable)
+  let primaryEdgeError = '';
   try {
     console.info(`[adminService] Attempting privileged Edge Function deletion for user ${userId} (${userFullName})...`);
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData?.session?.access_token;
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+
     const { data: edgeData, error: edgeError } = await supabase.functions.invoke('delete-worker', {
-      body: { user_id: userId },
+      method: 'POST',
+      headers,
+      body: { user_id: userId, userId },
     });
 
     if (!edgeError && edgeData && edgeData.success) {
       console.info(`[adminService] Edge Function successfully deleted worker ${userId}.`);
       return {
         success: true,
-        message: edgeData.message || 'User deleted successfully.',
+        message: edgeData.message || 'Staff account permanently deleted.',
       };
     }
 
@@ -281,15 +297,18 @@ export async function deleteWorkerAccount(
           error: errStr,
         };
       }
-      console.warn('[adminService] Edge Function returned error, trying secondary methods:', errStr);
+      primaryEdgeError = errStr;
+      console.warn('[adminService] Edge Function returned error, trying fallback methods:', errStr);
     } else if (edgeError) {
-      console.warn('[adminService] Edge Function unreachable or errored:', edgeError.message);
+      primaryEdgeError = edgeError.message || String(edgeError);
+      console.warn('[adminService] Edge Function notice:', primaryEdgeError);
     }
   } catch (edgeInvokeErr) {
-    console.warn('[adminService] Edge function invocation caught error:', edgeInvokeErr);
+    primaryEdgeError = edgeInvokeErr instanceof Error ? edgeInvokeErr.message : String(edgeInvokeErr);
+    console.warn('[adminService] Edge function invocation caught notice:', edgeInvokeErr);
   }
 
-  // 4. Secondary: Invoke Postgres Database RPC 'delete_worker_account'
+  // 5. Tertiary: Invoke Postgres Database RPC 'delete_worker_account'
   try {
     console.info(`[adminService] Attempting Postgres RPC 'delete_worker_account' for ${userId}...`);
     const { data: rpcData, error: rpcError } = await supabase.rpc('delete_worker_account', {
@@ -302,7 +321,7 @@ export async function deleteWorkerAccount(
         console.info(`[adminService] Database RPC successfully deleted worker ${userId}.`);
         return {
           success: true,
-          message: parsedRpc.message || 'User deleted successfully.',
+          message: parsedRpc.message || 'Staff account permanently deleted.',
         };
       }
     }
@@ -314,13 +333,27 @@ export async function deleteWorkerAccount(
     console.warn('[adminService] RPC caught notice:', rpcCatchErr);
   }
 
-  // 5. If all permanent deletion methods failed, return explicit failure.
-  // Never soft-delete or report false success for permanent account deletion.
+  // 6. If all permanent deletion methods failed, provide an actionable and clear diagnostic message.
   console.error(`[adminService] Permanent account deletion failed for user ${userId}.`);
+  let diagnosticMessage = 'Failed to permanently delete staff account.';
+  const lowerEdge = primaryEdgeError.toLowerCase();
+  if (
+    lowerEdge.includes('failed to send a request to the edge function') ||
+    lowerEdge.includes('functionsfetcherror') ||
+    lowerEdge.includes('404') ||
+    lowerEdge.includes('not found') ||
+    lowerEdge.includes('unreachable')
+  ) {
+    diagnosticMessage =
+      'The "delete-worker" Edge Function is not deployed or reachable on your Supabase project. Please deploy it using: "supabase functions deploy delete-worker".';
+  } else if (primaryEdgeError) {
+    diagnosticMessage = primaryEdgeError;
+  }
+
   return {
     success: false,
-    message: 'Failed to permanently delete staff account. Ensure the server backend is reachable and privileged deletion credentials are configured.',
-    error: 'PERMANENT_DELETION_FAILED',
+    message: diagnosticMessage,
+    error: primaryEdgeError || 'PERMANENT_DELETION_FAILED',
   };
 }
 

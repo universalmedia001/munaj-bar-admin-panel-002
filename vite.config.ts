@@ -34,12 +34,16 @@ function apiMiddlewarePlugin(): Plugin {
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
         try {
-          const qzHandled = await handleQzPrintApi(req, res);
-          if (qzHandled) return;
-          const handled = await handleAdminDeleteWorker(req, res);
-          if (!handled) {
-            next();
+          const pathname = (req.url || '').split('?')[0];
+          if (pathname.startsWith('/api/qz/')) {
+            const qzHandled = await handleQzPrintApi(req, res);
+            if (qzHandled) return;
           }
+          if (pathname === '/api/admin/delete-worker' || pathname === '/api/admin/delete-worker/') {
+            const handled = await handleAdminDeleteWorker(req, res);
+            if (handled) return;
+          }
+          next();
         } catch (err) {
           next(err);
         }
