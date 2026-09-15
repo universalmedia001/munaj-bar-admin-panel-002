@@ -13,6 +13,8 @@ import {
   Sliders,
   Image as ImageIcon,
   Trash2,
+  AlertTriangle,
+  RotateCcw,
 } from 'lucide-react';
 import type { BusinessSettings } from '../../types';
 import { Badge } from '../common/Badge';
@@ -21,6 +23,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { WorkerPOSBrandingSection } from './WorkerPOSBrandingSection';
 import { ShiftSettingsSection } from './ShiftSettingsSection';
+import { ClearBusinessDataModal } from './ClearBusinessDataModal';
 import {
   uploadBusinessLogo,
   deleteStorageFile,
@@ -55,6 +58,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [showUrlInput, setShowUrlInput] = useState(false);
+  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
 
   useEffect(() => {
     if (settings) {
@@ -521,6 +525,43 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </button>
         </div>
       </form>
+
+      {/* Controlled Business Data Reset for Fresh Business Period */}
+      <div className="bg-zinc-950 p-6 rounded-2xl border border-red-900/40 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-400 shrink-0">
+              <AlertTriangle className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-white tracking-wide">
+                Fresh Business Period Initialization
+              </h3>
+              <p className="text-xs text-zinc-400 mt-0.5">
+                Reset sales figures, transaction history, and order counts to ₦0. Workers, accounts, and catalog products will remain safe and intact.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsResetModalOpen(true)}
+            className="px-4 py-2.5 bg-red-600/90 hover:bg-red-600 text-white text-xs font-bold rounded-xl shadow-lg shadow-red-950/40 transition-all flex items-center gap-2 self-start sm:self-auto shrink-0"
+          >
+            <RotateCcw className="w-4 h-4" />
+            <span>Clear / Reset Business Data...</span>
+          </button>
+        </div>
+      </div>
+
+      <ClearBusinessDataModal
+        isOpen={isResetModalOpen}
+        onClose={() => setIsResetModalOpen(false)}
+        onSuccess={() => {
+          setSuccessMsg('✓ Business figures and orders have been reset to ₦0 for a fresh operating period.');
+          setTimeout(() => setSuccessMsg(null), 5000);
+          onRefresh();
+        }}
+      />
     </div>
   );
 };

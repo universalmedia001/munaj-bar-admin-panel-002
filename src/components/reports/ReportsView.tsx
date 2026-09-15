@@ -26,6 +26,7 @@ import {
   Layers,
   ArrowUpRight,
   Filter,
+  Calculator,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -62,6 +63,7 @@ import { generateAndDownloadStaffReportPDF } from '../../utils/staffReportPdfGen
 import { generateSingleShiftReport } from '../../utils/shiftReportCalculator';
 import { generateAndDownloadShiftReportPDF } from '../../utils/shiftReportPdfGenerator';
 import { fetchSubmittedReports, markReportAsViewed } from '../../services/staffReportService';
+import { ExpensesView } from '../expenses/ExpensesView';
 
 export type ReportsTab =
   | 'executive_overview'
@@ -69,7 +71,8 @@ export type ReportsTab =
   | 'product_analytics'
   | 'staff_performance'
   | 'shift_reports'
-  | 'staff_submitted';
+  | 'staff_submitted'
+  | 'expenses_profit_loss';
 
 interface ReportsViewProps {
   sales: SaleWithDetails[];
@@ -403,6 +406,18 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                 {unreadSubmittedCount}
               </span>
             )}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('expenses_profit_loss')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 shrink-0 transition-all cursor-pointer ${
+              activeTab === 'expenses_profit_loss'
+                ? 'bg-[#22C55E] text-black font-extrabold shadow-md'
+                : 'bg-zinc-900/80 text-zinc-400 hover:text-white hover:bg-zinc-800 border border-zinc-800/60'
+            }`}
+          >
+            <Calculator className="w-3.5 h-3.5" />
+            <span>Expenses &amp; Profit/Loss</span>
           </button>
         </div>
       </div>
@@ -1110,6 +1125,13 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
             onReportDeleted={handleSubmittedReportDeleted}
             onRefresh={loadSubmittedReports}
           />
+        </div>
+      )}
+
+      {/* SUB-SECTION 7: EXPENSES & PROFIT/LOSS */}
+      {activeTab === 'expenses_profit_loss' && (
+        <div className="animate-in fade-in duration-200">
+          <ExpensesView sales={sales} settings={settings} />
         </div>
       )}
 

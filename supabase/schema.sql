@@ -774,3 +774,19 @@ BEGIN
       ('Roasted Salted Cashew Nuts', v_cat_snacks, 2500, 1500, 40, 10, 'https://images.unsplash.com/photo-1536591375315-1b8368903277?w=400&auto=format&fit=crop&q=80');
   END IF;
 END $$;
+
+-- Expenses Table
+CREATE TABLE IF NOT EXISTS public.expenses (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  description TEXT NOT NULL,
+  category TEXT NOT NULL,
+  amount NUMERIC(12, 2) NOT NULL CHECK (amount >= 0),
+  expense_date DATE NOT NULL DEFAULT CURRENT_DATE,
+  notes TEXT,
+  created_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_expenses_date ON public.expenses(expense_date DESC);
+CREATE INDEX IF NOT EXISTS idx_expenses_category ON public.expenses(category);
+ALTER TABLE public.expenses ENABLE ROW LEVEL SECURITY;

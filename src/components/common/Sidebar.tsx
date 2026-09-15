@@ -33,7 +33,8 @@ export type TabType =
   | 'activity'
   | 'reports'
   | 'settings'
-  | 'database';
+  | 'database'
+  | 'expenses';
 
 interface SidebarProps {
   activeTab: TabType;

@@ -29,6 +29,7 @@ import { ReceiptsView } from './components/receipts/ReceiptsView';
 import { NotificationsView } from './components/notifications/NotificationsView';
 import { ActivityView } from './components/activity/ActivityView';
 import { ReportsView } from './components/reports/ReportsView';
+import { ExpensesView } from './components/expenses/ExpensesView';
 import { SettingsView } from './components/settings/SettingsView';
 import { DatabaseView } from './components/database/DatabaseView';
 import { LoginView } from './components/auth/LoginView';
@@ -658,6 +659,14 @@ function AdminApp() {
               onOpenReceipt={handleOpenReceipt}
               onRefresh={fetchAllData}
               loading={dataLoading}
+            />
+          )}
+
+          {activeTab === 'expenses' && (
+            <ExpensesView
+              sales={sales}
+              settings={settings}
+              currentUser={profile}
             />
           )}
 

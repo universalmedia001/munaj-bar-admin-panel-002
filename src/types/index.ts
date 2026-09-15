@@ -133,3 +133,44 @@ export function formatWorkerDisplayName(
 
 export * from './staffReports';
 export * from './shiftReport';
+
+export type ExpenseCategory =
+  | 'Stock/Goods'
+  | 'Transportation'
+  | 'Electricity'
+  | 'Staff'
+  | 'Rent'
+  | 'Maintenance'
+  | 'Other';
+
+export interface Expense {
+  id: string;
+  description: string;
+  category: ExpenseCategory | string;
+  amount: number;
+  expense_date: string;
+  notes?: string | null;
+  created_by?: string | null;
+  created_at: string;
+  creator?: Profile | null;
+}
+
+export interface ExpenseFilter {
+  period: 'daily' | 'monthly' | 'custom';
+  date?: string; // YYYY-MM-DD for daily
+  month?: string; // YYYY-MM for monthly
+  startDate?: string;
+  endDate?: string;
+  category?: string | 'all';
+  searchQuery?: string;
+}
+
+export interface ProfitLossSummary {
+  periodLabel: string;
+  totalSales: number;
+  totalExpenses: number;
+  netProfitLoss: number;
+  status: 'PROFIT' | 'LOSS' | 'BREAK-EVEN';
+  salesCount: number;
+  expenseCount: number;
+}
