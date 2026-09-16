@@ -43,3 +43,4 @@ Real secrets are delivered via `/run/base44/app.env` (last `env_file` entry in c
 ## Notes
 - Supabase schema/migrations live in `supabase/` — these are applied to the hosted Supabase project, not local infra
 - The app is a POS admin panel: dashboard, sales, products, inventory, workers, shifts, receipts, reports, settings
+- **Backup & Restore** (`supabase/migrations/20260916_create_business_backups_table.sql`): a `business_backups` table stores JSONB snapshots of business data (products, categories, sales, sale_items, shifts, receipt_prints, stock_movements, expenses). Backups survive the Reset operation. Server endpoints: `POST /api/admin/backup`, `GET /api/admin/backups`, `POST /api/admin/restore` (in `server/adminBackupRestore.ts`). The Reset modal now asks whether to back up before resetting. Restore creates a PRE_RESTORE safety backup first, then deletes + reinserts business records in FK order (no duplicates).
