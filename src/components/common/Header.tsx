@@ -77,6 +77,7 @@ export const Header: React.FC<HeaderProps> = ({
     notifications: { title: 'Notifications & Broadcasts', desc: 'Staff announcements, stock warnings and operational alerts' },
     activity: { title: 'Audit Trail & Activity Log', desc: 'Immutable timeline of every business operation and transaction' },
     reports: { title: 'Reports & Analytics', desc: 'Revenue breakdowns, worker productivity and product trends' },
+    expenses: { title: 'Expenses & Profit / Loss', desc: 'Track venue operating costs, profitability margins, and closed business periods' },
     settings: { title: 'Business Settings', desc: 'Bar profile, receipt header/footer, address and currency' },
     database: { title: 'Database & Sync Status', desc: 'Supabase schema verification, tables status, and migration SQL' },
   };

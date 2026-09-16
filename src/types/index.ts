@@ -174,3 +174,28 @@ export interface ProfitLossSummary {
   salesCount: number;
   expenseCount: number;
 }
+
+export type BusinessPeriodType = 'day' | 'month';
+export type BusinessPeriodStatus = 'open' | 'closed';
+
+export interface BusinessPeriod {
+  id: string;
+  period_type: BusinessPeriodType;
+  period_key: string; // e.g. "2026-09-16" or "2026-09"
+  label: string; // e.g. "Wednesday, September 16, 2026" or "September 2026"
+  period_start: string; // ISO timestamp
+  period_end?: string | null; // ISO timestamp (when closed)
+  status: BusinessPeriodStatus;
+  closed_at?: string | null;
+  closed_by?: string | null;
+  closer_name?: string | null;
+  total_sales: number;
+  total_expenses: number;
+  net_profit_loss: number;
+  sales_count: number;
+  expenses_count: number;
+  notes?: string | null;
+  created_at: string;
+  updated_at?: string;
+}
+
