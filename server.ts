@@ -8,6 +8,7 @@ import { handleAdminDeleteShift } from "./server/adminDeleteShift";
 import { handleAdminDeleteRecord } from "./server/adminDeleteRecord";
 import { handleAdminEnsureProfile } from "./server/adminEnsureProfile";
 import { handleAdminResetBusinessData } from "./server/adminResetBusinessData";
+import { handleAdminBackupRestore } from "./server/adminBackupRestore";
 import { handleQzPrintApi } from "./server/qzPrintApi";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -68,6 +69,15 @@ async function startServer() {
   app.use(async (req, res, next) => {
     if (req.url && req.url.startsWith("/api/admin/reset-business-data")) {
       const handled = await handleAdminResetBusinessData(req, res);
+      if (handled) return;
+    }
+    next();
+  });
+
+  // 2.5 Admin backup & restore endpoints (backup, list backups, restore)
+  app.use(async (req, res, next) => {
+    if (req.url && (req.url.startsWith("/api/admin/backup") || req.url.startsWith("/api/admin/backups") || req.url.startsWith("/api/admin/restore"))) {
+      const handled = await handleAdminBackupRestore(req, res);
       if (handled) return;
     }
     next();

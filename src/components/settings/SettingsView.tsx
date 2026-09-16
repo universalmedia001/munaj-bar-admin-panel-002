@@ -15,6 +15,9 @@ import {
   Trash2,
   AlertTriangle,
   RotateCcw,
+  Database,
+  Archive,
+  History,
 } from 'lucide-react';
 import type { BusinessSettings } from '../../types';
 import { Badge } from '../common/Badge';
@@ -24,6 +27,8 @@ import { useAuth } from '../../context/AuthContext';
 import { WorkerPOSBrandingSection } from './WorkerPOSBrandingSection';
 import { ShiftSettingsSection } from './ShiftSettingsSection';
 import { ClearBusinessDataModal } from './ClearBusinessDataModal';
+import { BackupHistoryModal } from './BackupHistoryModal';
+import { createBackup } from '../../services/backupRestoreService';
 import {
   uploadBusinessLogo,
   deleteStorageFile,
@@ -59,6 +64,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
+  const [isBackupHistoryOpen, setIsBackupHistoryOpen] = useState(false);
+  const [isBackingUp, setIsBackingUp] = useState(false);
+  const [backupMsg, setBackupMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
     if (settings) {
@@ -296,6 +304,40 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   };
 
+  const handleBackup = async () => {
+    setIsBackingUp(true);
+    setBackupMsg(null);
+    try {
+      const result = await createBackup('MANUAL');
+      if (result.success && result.record_counts) {
+        const labels: Record<string, string> = {
+          categories: 'Categories',
+          products: 'Products',
+          shifts: 'Shifts',
+          sales: 'Sales',
+          sale_items: 'Sale Items',
+          receipt_prints: 'Receipt Prints',
+          stock_movements: 'Stock Movements',
+          expenses: 'Expenses',
+        };
+        const countStr = Object.entries(result.record_counts)
+          .filter(([, v]) => v > 0)
+          .map(([k, v]) => `${labels[k] || k}: ${v.toLocaleString()}`)
+          .join('\n');
+        setBackupMsg({
+          type: 'success',
+          text: `Backup completed successfully.\n${countStr}\nCreated: ${result.created_at ? new Date(result.created_at).toLocaleString() : 'now'}`,
+        });
+      } else {
+        setBackupMsg({ type: 'error', text: result.error || 'Failed to create backup.' });
+      }
+    } catch (err: any) {
+      setBackupMsg({ type: 'error', text: err?.message || 'An unexpected error occurred during backup.' });
+    } finally {
+      setIsBackingUp(false);
+    }
+  };
+
   return (
     <div className="space-y-6 pb-12 max-w-5xl mx-auto">
       {/* Top Banner */}
@@ -526,28 +568,73 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
       </form>
 
-      {/* Controlled Business Data Reset for Fresh Business Period */}
-      <div className="bg-zinc-950 p-6 rounded-2xl border border-red-900/40 space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-400 shrink-0">
-              <AlertTriangle className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="text-sm font-bold text-white tracking-wide">
-                Fresh Business Period Initialization
-              </h3>
-              <p className="text-xs text-zinc-400 mt-0.5">
-                Reset sales figures, transaction history, and order counts to ₦0. Workers, accounts, and catalog products will remain safe and intact.
-              </p>
-            </div>
+      {/* Backup / Restore / Reset — Fresh Business Period Initialization */}
+      <div className="bg-zinc-950 p-6 rounded-2xl border border-zinc-800 space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0">
+            <Archive className="w-5 h-5" />
           </div>
+          <div>
+            <h3 className="text-sm font-bold text-white tracking-wide">
+              Fresh Business Period Initialization
+            </h3>
+            <p className="text-xs text-zinc-400 mt-0.5">
+              Back up, restore, or reset sales figures, transaction history, and order counts. Workers, accounts, and catalog products remain safe and intact.
+            </p>
+          </div>
+        </div>
+
+        {backupMsg && (
+          <div className={`p-3 rounded-lg text-xs whitespace-pre-line flex items-start gap-2 ${
+            backupMsg.type === 'success'
+              ? 'bg-emerald-950/50 border border-emerald-800 text-emerald-300'
+              : 'bg-red-950/50 border border-red-800 text-red-300'
+          }`}>
+            {backupMsg.type === 'success'
+              ? <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-400" />
+              : <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-400" />}
+            <span>{backupMsg.text}</span>
+          </div>
+        )}
+
+        <div className="flex flex-col sm:flex-row gap-3">
+          {/* Backup Business Data */}
+          <button
+            type="button"
+            onClick={handleBackup}
+            disabled={isBackingUp}
+            className="flex-1 px-4 py-2.5 bg-blue-600/90 hover:bg-blue-600 text-white text-xs font-bold rounded-xl shadow-lg shadow-blue-950/40 transition-all flex items-center justify-center gap-2 disabled:opacity-60"
+          >
+            {isBackingUp ? (
+              <>
+                <RotateCcw className="w-4 h-4 animate-spin" />
+                <span>Backing up...</span>
+              </>
+            ) : (
+              <>
+                <Database className="w-4 h-4" />
+                <span>Backup Business Data</span>
+              </>
+            )}
+          </button>
+
+          {/* Restore Backup */}
+          <button
+            type="button"
+            onClick={() => setIsBackupHistoryOpen(true)}
+            className="flex-1 px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-bold rounded-xl border border-zinc-700 transition-all flex items-center justify-center gap-2"
+          >
+            <History className="w-4 h-4" />
+            <span>Restore Backup</span>
+          </button>
+
+          {/* Clear / Reset Business Data */}
           <button
             type="button"
             onClick={() => setIsResetModalOpen(true)}
-            className="px-4 py-2.5 bg-red-600/90 hover:bg-red-600 text-white text-xs font-bold rounded-xl shadow-lg shadow-red-950/40 transition-all flex items-center gap-2 self-start sm:self-auto shrink-0"
+            className="flex-1 px-4 py-2.5 bg-red-600/90 hover:bg-red-600 text-white text-xs font-bold rounded-xl shadow-lg shadow-red-950/40 transition-all flex items-center justify-center gap-2"
           >
-            <RotateCcw className="w-4 h-4" />
+            <AlertTriangle className="w-4 h-4" />
             <span>Clear / Reset Business Data...</span>
           </button>
         </div>
@@ -558,6 +645,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         onClose={() => setIsResetModalOpen(false)}
         onSuccess={() => {
           setSuccessMsg('✓ Business figures and orders have been reset to ₦0 for a fresh operating period.');
+          setTimeout(() => setSuccessMsg(null), 5000);
+          onRefresh();
+        }}
+      />
+
+      <BackupHistoryModal
+        isOpen={isBackupHistoryOpen}
+        onClose={() => setIsBackupHistoryOpen(false)}
+        onRestored={() => {
+          setSuccessMsg('✓ Business data restored successfully from backup.');
           setTimeout(() => setSuccessMsg(null), 5000);
           onRefresh();
         }}
