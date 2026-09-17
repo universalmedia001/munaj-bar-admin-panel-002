@@ -5,7 +5,7 @@ import { useWorkerBranding } from '../context/WorkerBrandingContext';
 import { getSupabase } from '../lib/supabase';
 
 export const LoginView: React.FC = () => {
-  const { signIn, error: authError, clearError } = useAuth();
+  const { signIn, error: authError, clearError, accountTerminationNotice, clearTerminationNotice } = useAuth();
   const { workerSiteName, workerPrimaryColor, textColor, businessLogo } = useWorkerBranding();
   const [logoImgError, setLogoImgError] = useState(false);
 
@@ -24,6 +24,7 @@ export const LoginView: React.FC = () => {
     setLocalError(null);
     setSuccessMessage(null);
     clearError();
+    if (clearTerminationNotice) clearTerminationNotice();
 
     if (!email || !password) {
       setLocalError('Please enter your email and password.');
@@ -61,7 +62,7 @@ export const LoginView: React.FC = () => {
     }
   };
 
-  const errorToShow = localError || authError;
+  const errorToShow = localError || authError || accountTerminationNotice;
 
   return (
     <div className="min-h-screen bg-[#050505] flex items-center justify-center p-4">

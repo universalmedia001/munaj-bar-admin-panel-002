@@ -33,12 +33,14 @@ interface ExpensesViewProps {
   sales?: SaleWithDetails[];
   settings?: BusinessSettings | null;
   currentUser?: Profile | null;
+  refreshTrigger?: number;
 }
 
 export const ExpensesView: React.FC<ExpensesViewProps> = ({
   sales = [],
   settings,
   currentUser,
+  refreshTrigger,
 }) => {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -88,7 +90,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
 
   useEffect(() => {
     loadExpenses();
-  }, []);
+  }, [refreshTrigger]);
 
   // Build filter object
   const currentFilter: ExpenseFilter = useMemo(

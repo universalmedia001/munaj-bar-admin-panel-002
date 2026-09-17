@@ -83,6 +83,7 @@ interface ReportsViewProps {
   onOpenReceipt?: (sale: SaleWithDetails) => void;
   onRefresh?: () => void;
   loading?: boolean;
+  refreshTrigger?: number;
 }
 
 export const ReportsView: React.FC<ReportsViewProps> = ({
@@ -94,6 +95,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   onOpenReceipt,
   onRefresh,
   loading = false,
+  refreshTrigger,
 }) => {
   const currency = settings?.currency || 'NGN';
   const [activeTab, setActiveTab] = useState<ReportsTab>('staff_submitted');
@@ -117,7 +119,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
 
   useEffect(() => {
     loadSubmittedReports();
-  }, [loadSubmittedReports]);
+  }, [loadSubmittedReports, refreshTrigger]);
 
   // Staff Performance Filter State
   const todayStr = new Date().toISOString().slice(0, 10);

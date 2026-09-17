@@ -132,7 +132,7 @@ export const BroadcastModal: React.FC<BroadcastModalProps> = ({
 
       // 1. Instant Realtime WebSocket Broadcast Dispatch (Direct channel delivery to all connected POS terminals)
       try {
-        const rtChannel = supabase.channel('munaj_admin_realtime');
+        const rtChannel = supabase.channel('munaj_broadcast_channel');
         await rtChannel.send({
           type: 'broadcast',
           event: 'announcement',

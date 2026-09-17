@@ -149,11 +149,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return false;
       }
 
-      // ONLY terminate if profile explicitly has is_active === false
-      if (profileRow && profileRow.is_active === false) {
+      // ONLY terminate if profile explicitly has is_active === false or status === 'inactive'
+      if (profileRow && (profileRow.is_active === false || profileRow.status === 'inactive')) {
         console.warn(`[MUNAJ Auth] Worker account ${currentUserId} has been deactivated.`);
         await forceAccountTermination(
-          'Your account has been deactivated. Please contact an administrator if you believe this was a mistake.'
+          'Your account has been deactivated. Please contact an administrator.'
         );
         return false;
       }
@@ -502,9 +502,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         (payload) => {
           console.log('[MUNAJ Auth] REALTIME: Profile UPDATE event detected:', payload);
           const updated = payload.new as any;
-          if (updated && updated.is_active === false) {
+          if (updated && (updated.is_active === false || updated.status === 'inactive')) {
             forceAccountTermination(
-              'Your account has been deactivated. Please contact an administrator if you believe this was a mistake.'
+              'Your account has been deactivated. Please contact an administrator.'
+            );
+          } else if (updated && isWorkerDeleted(updated)) {
+            forceAccountTermination(
+              'Your account has been deleted. Please contact an administrator if you believe this was a mistake.'
             );
           } else if (updated) {
             setProfile(updated as Profile);

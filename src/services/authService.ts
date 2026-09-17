@@ -86,6 +86,19 @@ export const authService = {
 
     profile = normalizeWorkerProfile(profile);
 
+    // 1. Verify account is not deleted
+    if (isWorkerDeleted(profile)) {
+      await supabase.auth.signOut();
+      throw new Error("Your account has been deleted. Please contact an administrator if you believe this was a mistake.");
+    }
+
+    // 2. Verify account is not deactivated
+    if (profile.is_active === false || profile.status === 'inactive') {
+      await supabase.auth.signOut();
+      throw new Error("Your account has been deactivated. Please contact an administrator.");
+    }
+
+    // 3. Verify role is an authorized Worker POS role
     if (!isAuthorizedWorkerRole(profile?.role)) {
       await supabase.auth.signOut();
       throw new Error("You don't have permission to use the MUNAJ BAR Worker POS.");
@@ -144,22 +157,111 @@ export const authService = {
     return supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session?.user) {
         let profile = await this.getCurrentWorkerProfile(session.user.id);
-        if (!profile) {
-          profile = {
-            id: session.user.id,
-            email: session.user.email || '',
-            full_name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'Worker',
-            role: (session.user.user_metadata?.role as WorkerRole) || 'cashier',
-            avatar_url: session.user.user_metadata?.avatar_url || null,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          };
+        
+        // Security check on session restore: verify account exists, not deleted, active, and authorized
+        if (
+          !profile ||
+          isWorkerDeleted(profile) ||
+          profile.is_active === false ||
+          profile.status === 'inactive' ||
+          !isAuthorizedWorkerRole(profile.role)
+        ) {
+          console.warn('[authService] Restored worker session failed deactivation/authorization validation:', {
+            hasProfile: !!profile,
+            isActive: profile?.is_active,
+            status: profile?.status,
+            role: profile?.role,
+          });
+          await supabase.auth.signOut();
+          try {
+            localStorage.removeItem('munaj_cached_worker');
+            localStorage.removeItem('munaj_active_shift');
+          } catch {}
+          callback(null, null);
+          return;
         }
+
         profile = normalizeWorkerProfile(profile);
         callback(session, profile);
       } else {
         callback(null, null);
       }
     });
+  },
+
+  /**
+   * Subscribes to real-time changes on public.profiles for the active worker.
+   * Immediately notifies if the worker is deactivated, deleted, or unauthorized.
+   * Also binds window focus and visibility revalidation.
+   */
+  subscribeToWorkerProfile(
+    userId: string,
+    onDeactivated: (reason: string) => void
+  ): () => void {
+    const supabase = getSupabase();
+    const channelName = `worker_profile_${userId}_${Date.now()}`;
+
+    const checkValidity = (p: Partial<Profile> | null) => {
+      if (!p) return;
+      if (p.is_active === false || p.status === 'inactive') {
+        onDeactivated('Your account has been deactivated. Please contact an administrator.');
+        return;
+      }
+      if (isWorkerDeleted(p as Profile)) {
+        onDeactivated('Your account has been deleted. Please contact an administrator if you believe this was a mistake.');
+        return;
+      }
+      if (p.role && !isAuthorizedWorkerRole(p.role)) {
+        onDeactivated("You don't have permission to use the MUNAJ BAR Worker POS.");
+        return;
+      }
+    };
+
+    const channel = supabase
+      .channel(channelName)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'profiles',
+          filter: `id=eq.${userId}`,
+        },
+        (payload) => {
+          const updated = payload.new as Partial<Profile>;
+          checkValidity(updated);
+        }
+      )
+      .subscribe();
+
+    const handleRevalidation = async () => {
+      try {
+        const fresh = await this.getCurrentWorkerProfile(userId);
+        if (fresh) {
+          checkValidity(fresh);
+        }
+      } catch (err) {
+        console.warn('[authService] Revalidation check notice:', err);
+      }
+    };
+
+    const handleFocus = () => {
+      handleRevalidation();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        handleRevalidation();
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      supabase.removeChannel(channel);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   },
 };

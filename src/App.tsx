@@ -114,7 +114,15 @@ function AdminApp() {
 
   const [dataLoading, setDataLoading] = useState(true);
   const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
   const initialDataLoadUserIdRef = useRef<string | null>(null);
+
+  // Background fetch coordination & debounce refs
+  const isFetchingRef = useRef(false);
+  const queuedRefreshRef = useRef(false);
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectAttemptsRef = useRef(0);
 
   // Modals
   const [selectedReceiptSale, setSelectedReceiptSale] = useState<SaleWithDetails | null>(null);
@@ -124,11 +132,22 @@ function AdminApp() {
   // Live Toast for New Sales
   const [liveSaleToast, setLiveSaleToast] = useState<{ id: string; amount: number; receipt: string } | null>(null);
 
-  // Fetch all database records
-  const fetchAllData = useCallback(async () => {
-    try {
-      setDataLoading(true);
+  // Fetch all database records with support for silent background synchronization
+  const fetchAllData = useCallback(async (options: { silent?: boolean } = {}) => {
+    const isSilent = options.silent ?? false;
 
+    // Prevent concurrent executions; if already running, queue one trailing reconciliation
+    if (isFetchingRef.current) {
+      queuedRefreshRef.current = true;
+      return;
+    }
+
+    isFetchingRef.current = true;
+    if (!isSilent) {
+      setDataLoading(true);
+    }
+
+    try {
       // 1. Settings
       const { data: settingsData } = await supabase.from('business_settings').select('*').limit(1);
       if (settingsData && settingsData.length > 0) {
@@ -224,12 +243,34 @@ function AdminApp() {
       if (printsData) setReceiptPrints(printsData as ReceiptPrint[]);
 
       setLastRefreshed(new Date());
+      setRefreshTrigger((prev) => prev + 1);
     } catch (err) {
       console.error('Failed to load live bar data:', err);
     } finally {
-      setDataLoading(false);
+      isFetchingRef.current = false;
+      if (!isSilent) {
+        setDataLoading(false);
+      }
+      // If any events arrived while active fetch was running, execute one trailing silent refresh
+      if (queuedRefreshRef.current) {
+        queuedRefreshRef.current = false;
+        setTimeout(() => {
+          fetchAllData({ silent: true });
+        }, 50);
+      }
     }
   }, []);
+
+  // Trailing debounced silent refresh (400ms coalescing window)
+  const scheduleDebouncedSilentRefresh = useCallback(() => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+    debounceTimerRef.current = setTimeout(() => {
+      debounceTimerRef.current = null;
+      fetchAllData({ silent: true });
+    }, 400);
+  }, [fetchAllData]);
 
   const isAuthorizedAdmin = Boolean(
     user && profile && (profile.role === 'admin' || profile.role === 'manager')
@@ -247,100 +288,197 @@ function AdminApp() {
     fetchAllData();
   }, [authLoading, profileLoading, isAuthorizedAdmin, profile, fetchAllData]);
 
-  // Supabase Realtime Channel Subscriptions
+  // Supabase Realtime Channel Subscriptions (Centralized Authoritative Sync)
   useEffect(() => {
     if (authLoading || profileLoading || !isAuthorizedAdmin) return;
 
-    const channel = supabase
-      .channel('munaj_admin_realtime')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'sales' },
-        (payload) => {
-          console.log('Realtime new sale received:', payload);
-          fetchAllData();
-          if (payload.new && (payload.new as any).total) {
-            setLiveSaleToast({
-              id: (payload.new as any).id,
-              amount: Number((payload.new as any).total),
-              receipt: (payload.new as any).receipt_number || 'MB-SALE',
-            });
-            setTimeout(() => setLiveSaleToast(null), 5000);
+    let isMounted = true;
+    let syncChannel: any = null;
+    let broadcastChannel: any = null;
+
+    const setupSyncChannel = () => {
+      if (!isMounted) return;
+
+      if (syncChannel) {
+        supabase.removeChannel(syncChannel);
+        syncChannel = null;
+      }
+
+      // Dedicated channel name for database synchronization
+      const channelName = `munaj_admin_data_sync_${Date.now()}`;
+      syncChannel = supabase
+        .channel(channelName)
+        // 1. Sales
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'sales' },
+          (payload) => {
+            if (payload.eventType === 'INSERT' && payload.new && (payload.new as any).total) {
+              setLiveSaleToast({
+                id: (payload.new as any).id,
+                amount: Number((payload.new as any).total),
+                receipt: (payload.new as any).receipt_number || 'MB-SALE',
+              });
+              setTimeout(() => setLiveSaleToast(null), 5000);
+            }
+            scheduleDebouncedSilentRefresh();
           }
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'shifts' },
-        (payload) => {
-          if (payload.eventType === 'DELETE' && payload.old && (payload.old as any).id) {
-            const deletedId = (payload.old as any).id;
-            setShifts((prev) => prev.filter((s) => s.id !== deletedId));
-          } else {
-            fetchAllData();
+        )
+        // 2. Sale Items
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'sale_items' },
+          () => scheduleDebouncedSilentRefresh()
+        )
+        // 3. Shifts
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'shifts' },
+          (payload) => {
+            if (payload.eventType === 'DELETE' && payload.old && (payload.old as any).id) {
+              const deletedId = (payload.old as any).id;
+              setShifts((prev) => prev.filter((s) => s.id !== deletedId));
+            }
+            scheduleDebouncedSilentRefresh();
           }
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'products' },
-        () => fetchAllData()
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'notifications' },
-        () => fetchAllData()
-      )
-      .on(
-        'broadcast',
-        { event: 'announcement' },
-        (payload) => {
-          console.log('Realtime broadcast announcement received:', payload);
-          const data = (payload as any)?.payload;
-          if (data && data.title) {
-            const notifItem: AppNotification = {
-              id: data.id || `notif_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-              user_id: data.recipientType === 'all' ? null : (data.recipientIds?.[0] || null),
-              title: data.title,
-              message: data.message || '',
-              type: data.type || 'admin_message',
-              reference_type: 'broadcast',
-              reference_id: null,
-              is_read: false,
-              created_at: data.timestamp || new Date().toISOString(),
-            };
-            setNotifications((prev) => [notifItem, ...prev.filter((n) => n.id !== notifItem.id)]);
+        )
+        // 4. Products
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'products' },
+          () => scheduleDebouncedSilentRefresh()
+        )
+        // 5. Stock Movements
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'stock_movements' },
+          () => scheduleDebouncedSilentRefresh()
+        )
+        // 6. Inventory Movements
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'inventory_movements' },
+          () => scheduleDebouncedSilentRefresh()
+        )
+        // 7. Activity Logs
+        .on(
+          'postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'activity_logs' },
+          () => scheduleDebouncedSilentRefresh()
+        )
+        // 8. Notifications
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'notifications' },
+          () => scheduleDebouncedSilentRefresh()
+        )
+        // 9. Staff Submitted Reports
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'staff_reports' },
+          () => scheduleDebouncedSilentRefresh()
+        )
+        // 10. Worker Profiles (deactivations, role updates, deletions)
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'profiles' },
+          () => scheduleDebouncedSilentRefresh()
+        )
+        // 11. Expenses
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'expenses' },
+          () => scheduleDebouncedSilentRefresh()
+        )
+        // 12. Receipt Prints
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'receipt_prints' },
+          () => scheduleDebouncedSilentRefresh()
+        )
+        // 13. Business Settings
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'business_settings' },
+          () => scheduleDebouncedSilentRefresh()
+        )
+        .subscribe((status) => {
+          if (!isMounted) return;
+          if (status === 'SUBSCRIBED') {
+            setRealtimeConnected(true);
+            reconnectAttemptsRef.current = 0;
+          } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+            setRealtimeConnected(false);
+            if (reconnectAttemptsRef.current < 5) {
+              const delay = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current), 15000);
+              reconnectAttemptsRef.current += 1;
+              if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+              reconnectTimerRef.current = setTimeout(() => {
+                if (isMounted) setupSyncChannel();
+              }, delay);
+            }
           }
-          fetchAllData();
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'activity_logs' },
-        () => fetchAllData()
-      )
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'stock_movements' },
-        () => fetchAllData()
-      )
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'inventory_movements' },
-        () => fetchAllData()
-      )
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          setRealtimeConnected(true);
-        } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
-          setRealtimeConnected(false);
-        }
-      });
+        });
+    };
+
+    // Separate dedicated broadcast channel for announcements
+    const setupBroadcastChannel = () => {
+      if (!isMounted) return;
+      if (broadcastChannel) {
+        supabase.removeChannel(broadcastChannel);
+        broadcastChannel = null;
+      }
+      broadcastChannel = supabase
+        .channel('munaj_broadcast_channel')
+        .on(
+          'broadcast',
+          { event: 'announcement' },
+          (payload) => {
+            console.log('Realtime broadcast announcement received:', payload);
+            const data = (payload as any)?.payload;
+            if (data && data.title) {
+              const notifItem: AppNotification = {
+                id: data.id || `notif_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+                user_id: data.recipientType === 'all' ? null : (data.recipientIds?.[0] || null),
+                title: data.title,
+                message: data.message || '',
+                type: data.type || 'admin_message',
+                reference_type: 'broadcast',
+                reference_id: null,
+                is_read: false,
+                created_at: data.timestamp || new Date().toISOString(),
+              };
+              setNotifications((prev) => [notifItem, ...prev.filter((n) => n.id !== notifItem.id)]);
+            }
+            scheduleDebouncedSilentRefresh();
+          }
+        )
+        .subscribe();
+    };
+
+    setupSyncChannel();
+    setupBroadcastChannel();
+
+    // Revalidation when window gains focus or document becomes visible
+    const handleFocusOrVisible = () => {
+      if (document.visibilityState === 'visible') {
+        scheduleDebouncedSilentRefresh();
+      }
+    };
+
+    window.addEventListener('focus', handleFocusOrVisible);
+    document.addEventListener('visibilitychange', handleFocusOrVisible);
 
     return () => {
-      supabase.removeChannel(channel);
+      isMounted = false;
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+      if (syncChannel) supabase.removeChannel(syncChannel);
+      if (broadcastChannel) supabase.removeChannel(broadcastChannel);
+      window.removeEventListener('focus', handleFocusOrVisible);
+      document.removeEventListener('visibilitychange', handleFocusOrVisible);
     };
-  }, [authLoading, profileLoading, isAuthorizedAdmin, fetchAllData]);
+  }, [authLoading, profileLoading, isAuthorizedAdmin, scheduleDebouncedSilentRefresh]);
 
   const handleOpenReceipt = (sale: SaleWithDetails) => {
     setSelectedReceiptSale(sale);
@@ -659,6 +797,7 @@ function AdminApp() {
               onOpenReceipt={handleOpenReceipt}
               onRefresh={fetchAllData}
               loading={dataLoading}
+              refreshTrigger={refreshTrigger}
             />
           )}
 
@@ -667,6 +806,7 @@ function AdminApp() {
               sales={sales}
               settings={settings}
               currentUser={profile}
+              refreshTrigger={refreshTrigger}
             />
           )}
 

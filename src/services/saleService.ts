@@ -3,7 +3,7 @@ import { productService } from './productService';
 import { isAuthorizedWorkerRole } from './authService';
 import { adminService } from './adminService';
 import { submitStaffReportFromPOS } from './staffReportService';
-import { BestSellingProductItem, CartItem, CompletedSaleResult, PaymentMethod, Sale, SaleItem, SaleWithItems } from '../types';
+import { BestSellingProductItem, CartItem, CompletedSaleResult, PaymentMethod, Sale, SaleItem, SaleWithItems, Profile, isWorkerDeleted } from '../types';
 
 /**
  * Computes authoritative timestamp boundaries for reports, sales history, and stock tracking in Africa/Lagos (UTC+1)
@@ -87,19 +87,27 @@ export const saleService = {
   ): Promise<CompletedSaleResult> {
     const supabase = getSupabase();
 
-    // Verify authorized worker role if authenticated
+    // Verify authorized worker role and active account status if authenticated
     const { data: { user: currentUser } } = await supabase.auth.getUser();
     if (currentUser) {
       const { data: userProfile } = await supabase
         .from('profiles')
-        .select('role')
+        .select('*')
         .eq('id', currentUser.id)
         .maybeSingle();
 
-      if (userProfile?.role && !isAuthorizedWorkerRole(userProfile.role)) {
-        throw new Error(
-          'Unauthorized: You do not have permission to create or complete sales on the POS.'
-        );
+      if (userProfile) {
+        if (isWorkerDeleted(userProfile as Profile)) {
+          throw new Error('Your account has been deleted. Please contact an administrator if you believe this was a mistake.');
+        }
+        if (userProfile.is_active === false || userProfile.status === 'inactive') {
+          throw new Error('Your account has been deactivated. Please contact an administrator.');
+        }
+        if (!isAuthorizedWorkerRole(userProfile.role)) {
+          throw new Error(
+            'Unauthorized: You do not have permission to create or complete sales on the POS.'
+          );
+        }
       }
     }
 

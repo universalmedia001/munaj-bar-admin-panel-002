@@ -1,5 +1,6 @@
 import { getSupabase } from '../lib/supabase';
-import { Shift, ShiftSummaryData } from '../types';
+import { Shift, ShiftSummaryData, Profile, isWorkerDeleted } from '../types';
+import { isAuthorizedWorkerRole } from './authService';
 
 export const shiftService = {
   async getDefaultOpeningCashFloat(): Promise<number> {
@@ -64,6 +65,28 @@ export const shiftService = {
   async openShift(customOpeningCash?: number): Promise<Shift> {
     const supabase = getSupabase();
     
+    // Verify authorized worker role and active account status if authenticated
+    const { data: { user: currentUser } } = await supabase.auth.getUser();
+    if (currentUser) {
+      const { data: userProfile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', currentUser.id)
+        .maybeSingle();
+
+      if (userProfile) {
+        if (isWorkerDeleted(userProfile as Profile)) {
+          throw new Error('Your account has been deleted. Please contact an administrator if you believe this was a mistake.');
+        }
+        if (userProfile.is_active === false || userProfile.status === 'inactive') {
+          throw new Error('Your account has been deactivated. Please contact an administrator.');
+        }
+        if (!isAuthorizedWorkerRole(userProfile.role)) {
+          throw new Error('Unauthorized: You do not have permission to start shifts on the POS.');
+        }
+      }
+    }
+
     // Authoritative Admin Configured Float retrieval
     let configuredFloat = 50000;
     try {
