@@ -28,16 +28,21 @@ export function generateReportUuid(): string {
   });
 }
 
-function cleanUpLocalCache(reportId: string) {
+function cleanUpLocalCache(reportId?: string) {
   const keys = [STORAGE_KEY, LEGACY_STORAGE_KEY];
   for (const key of keys) {
     try {
-      const saved = localStorage.getItem(key);
-      if (saved) {
-        const reports = JSON.parse(saved);
-        if (Array.isArray(reports)) {
-          const filtered = reports.filter((r: any) => r.id !== reportId);
-          localStorage.setItem(key, JSON.stringify(filtered));
+      if (!reportId) {
+        // Clear all obsolete sample/demo cache
+        localStorage.removeItem(key);
+      } else {
+        const saved = localStorage.getItem(key);
+        if (saved) {
+          const reports = JSON.parse(saved);
+          if (Array.isArray(reports)) {
+            const filtered = reports.filter((r: any) => r.id !== reportId);
+            localStorage.setItem(key, JSON.stringify(filtered));
+          }
         }
       }
     } catch {}
@@ -45,179 +50,76 @@ function cleanUpLocalCache(reportId: string) {
 }
 
 /**
- * Builds realistic initial sample submitted reports tied to real database workers
- */
-function buildSampleSubmittedReports(workers: Profile[], sales: SaleWithDetails[]): StaffSubmittedReport[] {
-  if (!workers || workers.length === 0) return [];
-
-  const reports: StaffSubmittedReport[] = [];
-  const now = new Date();
-
-  // For up to 3 workers, generate a submitted report based on their actual or realistic sales
-  workers.slice(0, 3).forEach((worker, index) => {
-    const workerSales = sales.filter((s) => s.worker_id === worker.id);
-    const period: StaffReportPeriod = index === 0 ? 'today' : index === 1 ? 'yesterday' : 'this_week';
-    const range = getPeriodDateRange(period);
-
-    // Calculate actual matching sales for that period
-    const periodSales = workerSales.filter((s) => {
-      const d = new Date(s.created_at);
-      return d >= range.startDate && d <= range.endDate;
-    });
-
-    const salesTotal = periodSales.reduce((sum, s) => sum + Number(s.total || 0), 0);
-    const transactionsCount = periodSales.length;
-    const itemsCount = periodSales.reduce((sum, s) => {
-      return sum + (s.items?.reduce((iSum, item) => iSum + Number(item.quantity || 0), 0) || 1);
-    }, 0);
-
-    const cashSales = periodSales
-      .filter((s) => s.payment_method === 'cash')
-      .reduce((sum, s) => sum + Number(s.total || 0), 0);
-    const posSales = periodSales
-      .filter((s) => s.payment_method === 'pos')
-      .reduce((sum, s) => sum + Number(s.total || 0), 0);
-    const transferSales = periodSales
-      .filter((s) => s.payment_method === 'transfer')
-      .reduce((sum, s) => sum + Number(s.total || 0), 0);
-
-    const avgSale = transactionsCount > 0 ? salesTotal / transactionsCount : 0;
-
-    // Report creation timestamp
-    const subTime = new Date(now.getTime() - index * 3600 * 1000 * 4);
-
-    reports.push({
-      id: generateReportUuid(),
-      worker_id: worker.id,
-      worker_name: worker.full_name,
-      worker_role: worker.role || 'bartender',
-      period,
-      period_label: range.periodLabel,
-      start_date: range.startDate.toISOString(),
-      end_date: range.endDate.toISOString(),
-      sales_total: salesTotal > 0 ? salesTotal : (index + 1) * 35000,
-      transactions_count: transactionsCount > 0 ? transactionsCount : (index + 1) * 5,
-      items_count: itemsCount > 0 ? itemsCount : (index + 1) * 12,
-      cash_sales: cashSales > 0 ? cashSales : (index + 1) * 15000,
-      pos_sales: posSales > 0 ? posSales : (index + 1) * 12000,
-      transfer_sales: transferSales > 0 ? transferSales : (index + 1) * 8000,
-      average_sale: avgSale > 0 ? avgSale : 7000,
-      status: index === 0 ? 'SUBMITTED' : 'VIEWED',
-      created_at: subTime.toISOString(),
-      submitted_at: subTime.toISOString(),
-      viewed_at: index > 0 ? new Date(subTime.getTime() + 600000).toISOString() : null,
-      notes: `Cashier submitted end-of-service sales report for ${range.periodLabel}.`,
-    });
-  });
-
-  return reports;
-}
-
-/**
- * Fetch all submitted reports from Supabase (or fallback cache/notifications)
+ * Fetch all submitted reports from Supabase public.staff_reports table (sole source of truth).
+ * If staff_reports is empty, returns empty array [] so the UI displays the empty state.
  */
 export async function fetchSubmittedReports(
   workers: Profile[],
-  sales: SaleWithDetails[]
+  _sales: SaleWithDetails[]
 ): Promise<StaffSubmittedReport[]> {
   try {
-    let dbReports: StaffSubmittedReport[] = [];
+    // Purge obsolete local sample caches so synthetic reports never reappear
+    cleanUpLocalCache();
 
-    // 1. Try querying Supabase staff_reports table
-    try {
-      const { data: tableData, error: tableErr } = await supabase
-        .from('staff_reports' as any)
-        .select('*')
-        .order('created_at', { ascending: false });
+    // Query Supabase public.staff_reports table as the sole source of truth
+    const { data: tableData, error: tableErr } = await supabase
+      .from('staff_reports' as any)
+      .select('*')
+      .order('created_at', { ascending: false });
 
-      if (!tableErr && tableData && tableData.length > 0) {
-        dbReports = tableData.map((row: any) => {
-          const worker = workers.find((w) => w.id === row.worker_id);
-          const reportType = row.report_type || 'today';
-          const period: StaffReportPeriod = ([
-            'today',
-            'yesterday',
-            'this_week',
-            'last_7_days',
-            'this_month',
-            'last_30_days',
-            'this_year',
-            'all_time',
-            'custom',
-          ].includes(reportType)
-            ? reportType
-            : 'today') as StaffReportPeriod;
-
-          const totalSales = Number(row.total_sales ?? row.sales_total ?? 0);
-          const totalTransactions = Number(row.total_transactions ?? row.transactions_count ?? 0);
-          const totalItems = Number(row.total_items ?? row.items_count ?? 0);
-
-          return {
-            id: String(row.id),
-            worker_id: row.worker_id || '',
-            worker_name: worker?.full_name || row.worker_name || 'Staff Member',
-            worker_role: worker?.role || row.worker_role || 'Staff',
-            period,
-            period_label: row.period_label || `${period.replace('_', ' ').toUpperCase()} Report`,
-            start_date: row.start_date || row.created_at,
-            end_date: row.end_date || row.created_at,
-            sales_total: totalSales,
-            transactions_count: totalTransactions,
-            items_count: totalItems,
-            cash_sales: Number(row.cash_sales ?? 0),
-            pos_sales: Number(row.pos_sales ?? 0),
-            transfer_sales: Number(row.transfer_sales ?? 0),
-            average_sale: Number(row.average_sale ?? (totalTransactions > 0 ? totalSales / totalTransactions : 0)),
-            status: (row.status as SubmittedReportStatus) || 'SUBMITTED',
-            created_at: row.created_at || new Date().toISOString(),
-            submitted_at: row.created_at || new Date().toISOString(),
-            viewed_at: row.viewed_at || null,
-            notes: row.notes || undefined,
-          };
-        });
-      }
-    } catch {
-      // Table doesn't exist yet or permission fallback
+    if (tableErr) {
+      console.warn('[staffReportService] Error querying staff_reports:', tableErr.message);
+      return [];
     }
 
-    // 2. Load from local storage cache
-    let cachedReports: StaffSubmittedReport[] = [];
-    const keys = [STORAGE_KEY, LEGACY_STORAGE_KEY];
-    for (const key of keys) {
-      try {
-        const saved = localStorage.getItem(key);
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            cachedReports = [...cachedReports, ...parsed];
-          }
-        }
-      } catch {
-        // Ignore parse error
-      }
+    if (!tableData || tableData.length === 0) {
+      return [];
     }
 
-    // Combine DB reports and cached reports
-    const combinedMap = new Map<string, StaffSubmittedReport>();
-    cachedReports.forEach((r) => combinedMap.set(r.id, r));
-    dbReports.forEach((r) => combinedMap.set(r.id, r));
+    return tableData.map((row: any) => {
+      const worker = workers.find((w) => w.id === row.worker_id);
+      const reportType = row.report_type || 'today';
+      const period: StaffReportPeriod = ([
+        'today',
+        'yesterday',
+        'this_week',
+        'last_7_days',
+        'this_month',
+        'last_30_days',
+        'this_year',
+        'all_time',
+        'custom',
+      ].includes(reportType)
+        ? reportType
+        : 'today') as StaffReportPeriod;
 
-    const combinedList = Array.from(combinedMap.values());
-    if (combinedList.length > 0) {
-      combinedList.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-      return combinedList;
-    }
+      const totalSales = Number(row.total_sales ?? row.sales_total ?? 0);
+      const totalTransactions = Number(row.total_transactions ?? row.transactions_count ?? 0);
+      const totalItems = Number(row.total_items ?? row.items_count ?? 0);
 
-    // 3. Fallback: generate realistic reports for workers
-    const initialReports = buildSampleSubmittedReports(workers, sales);
-    if (initialReports.length > 0) {
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(initialReports));
-      } catch {
-        // storage full
-      }
-    }
-    return initialReports;
+      return {
+        id: String(row.id),
+        worker_id: row.worker_id || '',
+        worker_name: worker?.full_name || row.worker_name || 'Staff Member',
+        worker_role: worker?.role || row.worker_role || 'Staff',
+        period,
+        period_label: row.period_label || `${period.replace('_', ' ').toUpperCase()} Report`,
+        start_date: row.start_date || row.created_at,
+        end_date: row.end_date || row.created_at,
+        sales_total: totalSales,
+        transactions_count: totalTransactions,
+        items_count: totalItems,
+        cash_sales: Number(row.cash_sales ?? 0),
+        pos_sales: Number(row.pos_sales ?? 0),
+        transfer_sales: Number(row.transfer_sales ?? 0),
+        average_sale: Number(row.average_sale ?? (totalTransactions > 0 ? totalSales / totalTransactions : 0)),
+        status: (row.status as SubmittedReportStatus) || 'SUBMITTED',
+        created_at: row.created_at || new Date().toISOString(),
+        submitted_at: row.created_at || new Date().toISOString(),
+        viewed_at: row.viewed_at || null,
+        notes: row.notes || undefined,
+      };
+    });
   } catch (err) {
     console.error('Error fetching submitted reports:', err);
     return [];
